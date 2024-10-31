@@ -21,10 +21,8 @@ url_pattern = re.compile(r"https?://\S+")
 
 
 # Define the markclipper function (assuming it's already implemented)
-async def markclipper(url: str, output_dir: str) -> dict:
+async def markclipper(url: str) -> dict:
     base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
-    temp_output_dir = os.path.join(base_dir, "data")
-    shutil.rmtree(temp_output_dir, ignore_errors=True)
 
     process = await asyncio.create_subprocess_exec(
         "python",
@@ -32,7 +30,7 @@ async def markclipper(url: str, output_dir: str) -> dict:
         "--url",
         url,
         "--output-dir",
-        temp_output_dir,
+        output_dir,
         "--filename-method",
         "title",
         stdout=asyncio.subprocess.PIPE,
@@ -48,7 +46,11 @@ async def markclipper(url: str, output_dir: str) -> dict:
         metadata = json.load(f)
     with open(output["markdown_file"], "r") as f:
         markdown_content = f.read()
-    shutil.rmtree(temp_output_dir, ignore_errors=True)
+
+    if not keep_all_files:
+        for k, v in output.items():
+            if k.endswith("_file"):
+                os.remove(v)
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir, exist_ok=True)
@@ -77,15 +79,19 @@ async def handle_message(update: Update, context) -> None:
     if urls:
         for url in urls:
             try:
-                await update.message.reply_text(f"Processing URL: {url}")
+                response_message = f"Processing URL: {url}"
+                await update.message.reply_text(response_message)
+                logging.info(f"Processing URL: {url}")
                 # Call the markclipper function
-                metadata = await markclipper(url, output_dir)
+                metadata = await markclipper(url)
                 title = metadata["title"]
                 # Generate a response message
                 response_message = f"Processed URL: {url}\nTitle: {title}"
+                logging.info(response_message)
                 # Send the result back to the same chat
                 await update.message.reply_text(response_message)
             except Exception as e:
+                logging.exception(f"Failed to process URL: {url}")
                 await update.message.reply_text(
                     f"Failed to process URL: {url}\nError: {str(e)}"
                 )
@@ -103,8 +109,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--output-dir", required=True, help="Output directory for the markdown files"
     )
+    parser.add_argument(
+        "--keep-all-files", action="store_true", help="Keep all temporary files"
+    )
     args = parser.parse_args()
     output_dir = args.output_dir
+    keep_all_files = args.keep_all_files
 
     # Use the parsed arguments
     app = ApplicationBuilder().token(args.token).build()

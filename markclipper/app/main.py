@@ -7,21 +7,40 @@ import datetime
 import uuid
 
 
-def clip_url_to_markdown(args: argparse.Namespace):
-    # Ensure the data directory exists
-    os.makedirs(args.output_dir, exist_ok=True)
+def invoke_command(command: list[str], input: str = None, **kwargs) -> str:
+    # Invoke a command and return the output
+    process = subprocess.Popen(
+        command,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        **kwargs,
+    )
+    stdout, stderr = process.communicate(input=input.encode() if input else None)
+    if process.returncode != 0:
+        raise Exception(f"subprocess failed with error: {stderr.decode()}")
+    return stdout.decode()
 
+
+def get_html(url: str) -> str:
+    # Call monolith to get HTML
+    return invoke_command(["monolith", "-v", url])
+
+
+def get_polished_data(html: str):
     # Call the JavaScript script to get polished HTML and metadata
-    result = subprocess.run(
-        ["node", "index.mjs", args.url],
-        capture_output=True,
-        text=True,
-        check=True,
+    output = invoke_command(
+        ["node", "index.mjs"],
+        html,
         cwd=os.path.join(os.path.dirname(os.path.realpath(__file__)), "readability"),
     )
+    return json.loads(output)
 
+
+def clip_url_to_markdown(args: argparse.Namespace):
+    html = get_html(args.url)
     # Parse the JSON output from the JavaScript script
-    output = json.loads(result.stdout)
+    output = get_polished_data(html)
     html_content = output["html"]
     metadata = output["metadata"]
 
@@ -48,9 +67,17 @@ def clip_url_to_markdown(args: argparse.Namespace):
             raise ValueError("Invalid filename method")
 
     # Define filenames
+    full_html_filename = f"{filename_prefix}_full.html"
     html_filename = f"{filename_prefix}.html"
     markdown_filename = f"{filename_prefix}.md"
     json_filename = f"{filename_prefix}.json"
+
+    # Ensure the data directory exists
+    os.makedirs(args.output_dir, exist_ok=True)
+
+    # Write the full HTML content to a file
+    with open(full_html_filename, "w", encoding="utf-8") as file:
+        file.write(html)
 
     # Write the HTML content to a file
     with open(html_filename, "w", encoding="utf-8") as file:
@@ -77,6 +104,7 @@ def clip_url_to_markdown(args: argparse.Namespace):
     return {
         "markdown_file": markdown_filename,
         "html_file": html_filename,
+        "full_html_file": full_html_filename,
         "metadata_file": json_filename,
     }
 
