@@ -1,9 +1,9 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-import subprocess
 import os
 import datetime
 import uuid
+import trafilatura
 
 app = FastAPI()
 
@@ -30,17 +30,29 @@ async def clip_url_to_markdown(request: ClipRequest):
     filename_prefix = f"{DATA_FOLDER}/{timestamp}_{uuid.uuid4().hex[:4]}"
 
     # Define filenames
-    html_filename = f"{filename_prefix}.html"
     markdown_filename = f"{filename_prefix}.md"
 
     try:
-        # Convert URL to HTML using monolith
-        subprocess.run(["monolith", url, "-o", html_filename], check=True)
+        # Fetch HTML content using Trafilatura
+        html_content = trafilatura.fetch_url(url)
+        if html_content is None:
+            raise HTTPException(
+                status_code=500, detail="Failed to fetch the URL content"
+            )
 
-        # Convert HTML to Markdown using pandoc
-        subprocess.run(["pandoc", html_filename, "-o", markdown_filename], check=True)
+        # Convert HTML to Markdown using Trafilatura with links and images preserved
+        markdown_content = trafilatura.extract(
+            html_content,
+            output_format="markdown",
+            include_links=True,
+            include_images=True,
+        )
 
-        return {"markdown_file": markdown_filename, "html_file": html_filename}
+        # Write the Markdown content to a file
+        with open(markdown_filename, "w", encoding="utf-8") as file:
+            file.write(markdown_content)
 
-    except subprocess.CalledProcessError as e:
+        return {"markdown_file": markdown_filename}
+
+    except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
