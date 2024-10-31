@@ -1,9 +1,9 @@
+import re
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+import subprocess
 import os
-import datetime
-import uuid
-import trafilatura
+import json
 
 app = FastAPI()
 
@@ -23,36 +23,60 @@ async def clip_url_to_markdown(request: ClipRequest):
     # Ensure the data directory exists
     os.makedirs(DATA_FOLDER, exist_ok=True)
 
-    # Generate human-readable timestamp
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-
-    # Generate filename prefix using the timestamp
-    filename_prefix = f"{DATA_FOLDER}/{timestamp}_{uuid.uuid4().hex[:4]}"
-
-    # Define filenames
-    markdown_filename = f"{filename_prefix}.md"
-
     try:
-        # Fetch HTML content using Trafilatura
-        html_content = trafilatura.fetch_url(url)
-        if html_content is None:
-            raise HTTPException(
-                status_code=500, detail="Failed to fetch the URL content"
-            )
-
-        # Convert HTML to Markdown using Trafilatura with links and images preserved
-        markdown_content = trafilatura.extract(
-            html_content,
-            output_format="markdown",
-            include_links=True,
-            include_images=True,
+        # Call the JavaScript script to get polished HTML and metadata
+        result = subprocess.run(
+            ["node", "index.mjs", url],
+            capture_output=True,
+            text=True,
+            check=True,
+            cwd=os.path.join(
+                os.path.dirname(os.path.realpath(__file__)), "readability"
+            ),
         )
 
-        # Write the Markdown content to a file
-        with open(markdown_filename, "w", encoding="utf-8") as file:
-            file.write(markdown_content)
+        # Parse the JSON output from the JavaScript script
+        output = json.loads(result.stdout)
+        html_content = output["html"]
+        metadata = output["metadata"]
 
-        return {"markdown_file": markdown_filename}
+        # Generate filename prefix using the title from metadata
+        safe_title = re.sub(r"[^\w\-_ ]", "_", metadata["title"]).strip()
+        filename_prefix = f"{DATA_FOLDER}/{safe_title}"
 
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # Define filenames
+        html_filename = f"{filename_prefix}.html"
+        markdown_filename = f"{filename_prefix}.md"
+        json_filename = f"{filename_prefix}.json"
+
+        # Write the HTML content to a file
+        with open(html_filename, "w", encoding="utf-8") as file:
+            file.write(html_content)
+
+        # Write the metadata to a JSON file
+        with open(json_filename, "w", encoding="utf-8") as file:
+            json.dump(metadata, file, indent=2)
+
+        # Convert HTML to Markdown using pandoc
+        subprocess.run(
+            [
+                "pandoc",
+                html_filename,
+                "-t",
+                "gfm",
+                "--strip-comments",
+                "--wrap=none",
+                "-o",
+                markdown_filename,
+            ],
+            check=True,
+        )
+
+        return {
+            "markdown_file": markdown_filename,
+            "html_file": html_filename,
+            "metadata_file": json_filename,
+        }
+
+    except subprocess.CalledProcessError as e:
+        raise HTTPException(status_code=500, detail=str(e.stderr))
