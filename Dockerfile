@@ -10,9 +10,12 @@ RUN apk add --no-cache pandoc
 
 WORKDIR /app
 
+# Install node.js dependencies
 COPY app/readability/package*.json readability/
 RUN cd readability && npm install
+RUN cd readability && rm package*.json
 
-COPY app/ .
+COPY app/main.py .
+COPY app/readability/index.mjs readability/
 
 ENTRYPOINT [ "python", "main.py" ]
