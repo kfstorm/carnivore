@@ -72,6 +72,8 @@ async def markclipper(url: str, output_dir: str) -> dict:
 async def handle_message(update: Update, context) -> None:
     text = update.message.text
     urls = url_pattern.findall(text)
+    # deduplicate the URLs
+    urls = set(urls)
     if urls:
         for url in urls:
             try:
