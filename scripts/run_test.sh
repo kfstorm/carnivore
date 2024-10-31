@@ -2,6 +2,6 @@
 
 set -euo pipefail
 
-cd "$(dirname "$0")/../app"
+cd "$(dirname "$0")/../markclipper/app"
 
-python main.py --url "https://clickhouse.com/blog/a-new-powerful-json-data-type-for-clickhouse" --output-dir ../data
+python main.py --url "https://clickhouse.com/blog/a-new-powerful-json-data-type-for-clickhouse" --output-dir ../../data --filename-method timestamp

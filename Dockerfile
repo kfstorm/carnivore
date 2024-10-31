@@ -11,11 +11,15 @@ RUN apk add --no-cache pandoc
 WORKDIR /app
 
 # Install node.js dependencies
-COPY app/readability/package*.json readability/
-RUN cd readability && npm install
-RUN cd readability && rm package*.json
+COPY markclipper/app/readability/package*.json markclipper/app/readability/
+RUN cd markclipper/app/readability && npm install
 
-COPY app/main.py .
-COPY app/readability/index.mjs readability/
+# Install Python dependencies
+COPY telegram-bot/requirements.txt telegram-bot/
+RUN cd telegram-bot && pip install --no-cache-dir -r requirements.txt
 
-ENTRYPOINT [ "python", "main.py" ]
+COPY markclipper/app/readability/index.mjs markclipper/app/readability/
+COPY markclipper/app/main.py markclipper/app/
+COPY telegram-bot/app/main.py telegram-bot/app/
+
+ENTRYPOINT [ "sh", "-c", "python telegram-bot/app/main.py --token \"${TELEGRAM_TOKEN}\" --channel-id \"${TELEGRAM_CHANNEL_ID}\" --output-dir \"${OUTPUT_DIR}\"" ]
