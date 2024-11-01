@@ -36,11 +36,11 @@ def invoke_command(command: list[str], input: str = None, **kwargs) -> str:
 
 
 async def process(url: str) -> dict:
-    markclipper_output = invoke_command(
-        [sys.executable, "markclipper/app/main.py", "--url", url]
+    carnivore_output = invoke_command(
+        [sys.executable, "carnivore/app/main.py", "--url", url]
     )
     post_process_command = shlex.split(args.post_process_command)
-    output = invoke_command(post_process_command, input=markclipper_output)
+    output = invoke_command(post_process_command, input=carnivore_output)
     return output
 
 
@@ -55,7 +55,7 @@ async def handle_message(update: Update, context) -> None:
             response_message = f"Processing URL: {url}"
             processing_message = await update.message.reply_text(response_message)
             try:
-                # Call the markclipper function
+                # Call the carnivore function
                 output = await process(url)
             except Exception as e:
                 logging.exception(f"Failed to process URL: {url}")

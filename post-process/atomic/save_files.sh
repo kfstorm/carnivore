@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-# This script takes the output of markclipper and choose one or more content formats to save to temp files.
+# This script takes the output of carnivore and choose one or more content formats to save to temp files.
 #
 # Arguments:
 # 1. content formats. Options: "markdown", "html", "full_html". You can provide multiple formats separated by comma.
@@ -17,14 +17,14 @@ if [ -z "${CONTENT_FORMATS}" ]; then
     exit 1
 fi
 
-markclipper_output_path=/tmp/markclipper_output
-cat > "${markclipper_output_path}"
+carnivore_output_path=/tmp/carnivore_output
+cat > "${carnivore_output_path}"
 
-title=$(jq -r ".metadata.title" "${markclipper_output_path}")
+title=$(jq -r ".metadata.title" "${carnivore_output_path}")
 # trim title
 title=$(echo "$title" | sed 's/^\s*//; s/\s*$//;')
 if [ -z "${title}" ]; then
-    title=$(jq -r ".metadata.url" "${markclipper_output_path}")
+    title=$(jq -r ".metadata.url" "${carnivore_output_path}")
 fi
 # replace
 base_file_name=$(echo "$title" | sed 's/[<>:"/\\|?*]/-/g; s/\s/ /g;')
@@ -50,7 +50,7 @@ for content_format in "${content_formats[@]}"; do
             ;;
     esac
     output_file_path="/tmp/${file_name}"
-    jq -r ".content.${content_format}" "${markclipper_output_path}" > "${output_file_path}"
+    jq -r ".content.${content_format}" "${carnivore_output_path}" > "${output_file_path}"
     if [ "${content_format}" == "markdown" ]; then
         if [ -n "${MARKDOWN_FRONTMATTER_KEY_MAPPING:-}" -o -n "${MARKDOWN_FRONTMATTER_ADDITIONAL_ARGS:-}" ]; then
             additional_args=()
@@ -58,7 +58,7 @@ for content_format in "${content_formats[@]}"; do
                 additional_args=(${MARKDOWN_FRONTMATTER_ADDITIONAL_ARGS})
             fi
             python "$(dirname $0)/frontmatter.py" \
-                --metadata "$(jq -r '.metadata' "${markclipper_output_path}")" \
+                --metadata "$(jq -r '.metadata' "${carnivore_output_path}")" \
                 --key-mapping "${MARKDOWN_FRONTMATTER_KEY_MAPPING:-}" \
                 "${additional_args[@]}" \
                 > "${output_file_path}.tmp"
@@ -69,4 +69,4 @@ for content_format in "${content_formats[@]}"; do
     echo "${output_file_path}"
 done
 
-rm -f "${markclipper_output_path}"
+rm -f "${carnivore_output_path}"

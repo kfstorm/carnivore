@@ -1,4 +1,4 @@
-# Markclipper
+# Carnivore
 
 **NOTE: This project is still in early development.**
 
@@ -11,8 +11,8 @@ This project is a Telegram bot that processes URLs sent in a specific channel. T
 1. Start the telegram bot.
 
     ```sh
-    git clone https://github.com/kfstorm/markclipper.git
-    cd markclipper
+    git clone https://github.com/kfstorm/carnivore.git
+    cd carnivore
     args=(
         -e TELEGRAM_TOKEN=...
         -e TELEGRAM_CHANNEL_ID=...
@@ -55,11 +55,11 @@ docker run --rm -it "${args[@]}" $(docker build . --quiet)
 
 ### Telegram Bot
 
-- **telegram-bot/app/main.py**: The main script for the Telegram bot. It listens for URLs in messages in a specific channel, clip webpages using the **markclipper** tool, and invokes a post-processing command for further processing.
+- **telegram-bot/app/main.py**: The main script for the Telegram bot. It listens for URLs in messages in a specific channel, clip webpages using the **carnivore** tool, and invokes a post-processing command for further processing.
 
-### Markclipper Core
+### Carnivore Core
 
-- **markclipper/app/main.py**: The main script of the **markclipper** tool. It converts web pages to various formats, currently HTML and Markdown.
+- **carnivore/app/main.py**: The main script of the **carnivore** tool. It converts web pages to various formats, currently HTML and Markdown.
 
 ### Post-Process Scripts
 
