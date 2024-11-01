@@ -42,6 +42,7 @@ args=(
     -e GITHUB_BRANCH=master # optional.
     -e GITHUB_REPO_DIR=path/in/repo
     -e GITHUB_TOKEN=...
+    -e CONTENT_FORMATS="markdown,html,full_html" # optional. upload multiple versions of the web page. Default: markdown.
     -e MARKDOWN_FRONTMATTER_KEY_MAPPING="url:url,title:title" # optional. you may want to add frontmatter at the beginning of the Markdown file.
     -e MARKDOWN_FRONTMATTER_ADDITIONAL_ARGS="--timestamp-key date-created" # optional. you may want to add the timestamp to the frontmatter.
     -e TZ=Asia/Shanghai # optional. you may want to customize the timezone.
