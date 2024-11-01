@@ -74,9 +74,11 @@ if __name__ == "__main__":
     body = {
         "message": f"Upload {os.path.basename(args.file_path)}",
         "content": base64_content,
-        "branch": args.branch,
-        "sha": sha,
     }
+    if args.branch:
+        body["branch"] = args.branch
+    if sha:
+        body["sha"] = sha
     response = requests.put(github_upload_url, headers=common_headers, json=body)
     response.raise_for_status()
     print(response.json()["content"]["html_url"])
