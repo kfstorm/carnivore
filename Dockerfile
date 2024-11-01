@@ -3,7 +3,7 @@ FROM python:3.13.0-alpine3.20
 ENV NODE_ENV=production
 
 # Install dependencies
-RUN apk add --no-cache nodejs npm pandoc monolith jq
+RUN apk add --no-cache bash nodejs npm pandoc monolith jq curl
 
 WORKDIR /app
 

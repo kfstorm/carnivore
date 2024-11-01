@@ -44,6 +44,8 @@ def get_markdown(html: str):
     return invoke_command(
         [
             "pandoc",
+            "-f",
+            "html",
             "-t",
             "gfm-raw_html",
             "--wrap=none",
@@ -64,6 +66,7 @@ def clip_url_to_markdown(args: argparse.Namespace):
 
     return {
         "metadata": metadata,
+        "url": args.url,
         "content": {
             "markdown": markdown,
             "html": html,
