@@ -13,7 +13,8 @@ RUN cd markclipper/app/readability && npm install && npm cache clean --force
 
 # Install Python packages
 COPY telegram-bot/requirements.txt telegram-bot/
-RUN cd telegram-bot && pip install --no-cache-dir -r requirements.txt
+COPY post-process/requirements.txt post-process/
+RUN pip install --no-cache-dir -r telegram-bot/requirements.txt -r post-process/requirements.txt
 
 COPY markclipper/app/readability/index.mjs markclipper/app/readability/
 COPY markclipper/app/main.py markclipper/app/
