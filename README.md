@@ -2,30 +2,59 @@
 
 **NOTE: This project is still in early development.**
 
-This project is a Telegram bot that processes URLs sent in a specific channel. The bot converts web pages to Markdown format and saves the content to a specified directory.
+This project is a Telegram bot that processes URLs sent in a specific channel. The bot converts web pages to Markdown format and do various kinds of post-processing.
+
+**Owning your data is important. Saving your data with open formats is also important.**
 
 ## Usage
 
 1. Start the telegram bot.
 
-```sh
-git clone https://github.com/kfstorm/markclipper.git
-cd markclipper
-docker run --rm -it -e TELEGRAM_TOKEN=... -e TELEGRAM_CHANNEL_ID=... $(docker build . --quiet)
-```
+    ```sh
+    git clone https://github.com/kfstorm/markclipper.git
+    cd markclipper
+    docker run --rm -it \
+        -e TELEGRAM_TOKEN=... \
+        -e TELEGRAM_CHANNEL_ID=... \
+        # Add more environment variables as needed \
+        $(docker build . --quiet)
+    ```
 
-2. Send a URL in the specified Telegram channel. The bot will process the URL and save the content to the specified directory.
+2. Send a URL in the specified Telegram channel. The bot will process the URL and send a reply message with the metadata of the article. (This is the default behavior if you don't customize the post-processing.)
+
+## Post-Processing Customization
+
+You can customize the post-processing by:
+
+1. Choose a pre-defined post-processing command.
+2. Write your own post-processing command and mount it into the container.
+
+To configure the post-processing command, set the `POST_PROCESS_COMMAND` environment variable. The command should be a shell command.
+
+e.g. To use the pre-defined post-processing command to upload the clipped Markdown file to a GitHub repository:
+
+```sh
+docker run --rm -it \
+    -e TELEGRAM_TOKEN=... \
+    -e TELEGRAM_CHANNEL_ID=... \
+    -e POST_PROCESS_COMMAND=post-process/upload_to_github.sh \
+    -e GITHUB_REPO=username/repo_name \
+    -e GITHUB_REPO_DIR=path/in/repo \
+    -e GITHUB_TOKEN=... \
+    $(docker build . --quiet)
+```
 
 ## Components
 
 ### Telegram Bot
 
-- **telegram-bot/app/main.py**: The main script for the Telegram bot. It listens for messages in a specific channel, processes URLs using the [markclipper](http://_vscodecontentref_/0) tool, and saves the content to a specified directory.
+- **telegram-bot/app/main.py**: The main script for the Telegram bot. It listens for URLs in messages in a specific channel, clip webpages using the **markclipper** tool, and invokes a post-processing command for further processing.
 
-### Markclipper
+### Markclipper Core
 
-- **markclipper/app/main.py**: The main script for the [markclipper](http://_vscodecontentref_/1) tool. It converts web pages to Markdown format.
-- Tools used:
-  - [monolith](https://github.com/Y2Z/monolith): download web pages as single HTML files.
-  - [readability](https://github.com/mozilla/readability): parse HTML content and extract readable content and metadata.
-  - [pandoc](https://github.com/jgm/pandoc): convert HTML to Markdown.
+- **markclipper/app/main.py**: The main script of the **markclipper** tool. It converts web pages to various formats, currently HTML and Markdown.
+
+### Post-Process Scripts
+
+- [post-process/print_metadata.sh](process/print_metadata.sh): A script that prints the metadata of the processed content. (The default post-processing command for demonstration purposes.)
+- [post-process/upload_to_github.sh](post-process/upload_to_github.sh): A script that uploads the processed content to a GitHub repository.
