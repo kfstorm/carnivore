@@ -33,15 +33,20 @@ To configure the post-processing command, set the `POST_PROCESS_COMMAND` environ
 
 e.g. To use the pre-defined post-processing command to upload the clipped Markdown file to a GitHub repository:
 
-```sh
-docker run --rm -it \
-    -e TELEGRAM_TOKEN=... \
-    -e TELEGRAM_CHANNEL_ID=... \
-    -e POST_PROCESS_COMMAND=post-process/upload_to_github.sh \
-    -e GITHUB_REPO=username/repo_name \
-    -e GITHUB_REPO_DIR=path/in/repo \
-    -e GITHUB_TOKEN=... \
-    $(docker build . --quiet)
+```bash
+args=(
+    -e TELEGRAM_TOKEN=...
+    -e TELEGRAM_CHANNEL_ID=...
+    -e POST_PROCESS_COMMAND=post-process/upload_to_github.sh
+    -e GITHUB_REPO=username/repo_name
+    -e GITHUB_BRANCH=master # optional.
+    -e GITHUB_REPO_DIR=path/in/repo
+    -e GITHUB_TOKEN=...
+    -e MARKDOWN_FRONTMATTER_KEY_MAPPING="url:url,title:title" # optional. you may want to add frontmatter at the beginning of the Markdown file.
+    -e MARKDOWN_FRONTMATTER_ADDITIONAL_ARGS="--timestamp-key date-created" # optional. you may want to add the timestamp to the frontmatter.
+    -e TZ=Asia/Shanghai # optional. you may want to customize the timezone.
+)
+docker run --rm -it "${args[@]}" $(docker build . --quiet)
 ```
 
 ## Components

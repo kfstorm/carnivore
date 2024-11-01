@@ -65,8 +65,10 @@ def clip_url_to_markdown(args: argparse.Namespace):
     markdown = get_markdown(html)
 
     return {
-        "metadata": metadata,
-        "url": args.url,
+        "metadata": {
+            **metadata,
+            "url": args.url,
+        },
         "content": {
             "markdown": markdown,
             "html": html,

@@ -17,13 +17,14 @@ if [ -z "${CONTENT_FORMAT}" ]; then
     exit 1
 fi
 
-cat > /tmp/markclipper_output
+markclipper_output_path=/tmp/markclipper_output
+cat > "${markclipper_output_path}"
 
-title=$(jq -r ".metadata.title" /tmp/markclipper_output)
+title=$(jq -r ".metadata.title" "${markclipper_output_path}")
 # trim title
 title=$(echo "$title" | sed 's/^\s*//; s/\s*$//;')
 if [ -z "${title}" ]; then
-    title=$(jq -r ".url" /tmp/markclipper_output)
+    title=$(jq -r ".metadata.url" "${markclipper_output_path}")
 fi
 # replace
 file_name=$(echo "$title" | sed 's/[<>:"/\\|?*]/-/g; s/\s/ /g;')
@@ -43,9 +44,24 @@ case "${CONTENT_FORMAT}" in
         ;;
 esac
 
-jq -r ".content.${CONTENT_FORMAT}" /tmp/markclipper_output > "/tmp/${file_name}"
+output_file_path="/tmp/${file_name}"
 
-rm -f /tmp/markclipper_output
+jq -r ".content.${CONTENT_FORMAT}" "${markclipper_output_path}" > "${output_file_path}"
+if [ -n "${MARKDOWN_FRONTMATTER_KEY_MAPPING:-}" -o -n "${MARKDOWN_FRONTMATTER_ADDITIONAL_ARGS:-}" ]; then
+    additional_args=()
+    if [ -n "${MARKDOWN_FRONTMATTER_ADDITIONAL_ARGS:-}" ]; then
+        additional_args=(${MARKDOWN_FRONTMATTER_ADDITIONAL_ARGS})
+    fi
+    python "$(dirname $0)/frontmatter.py" \
+        --metadata "$(jq -r '.metadata' "${markclipper_output_path}")" \
+        --key-mapping "${MARKDOWN_FRONTMATTER_KEY_MAPPING:-}" \
+        "${additional_args[@]}" \
+        > "${output_file_path}.tmp"
+    cat "${output_file_path}" >> "${output_file_path}.tmp"
+    mv "${output_file_path}.tmp" "${output_file_path}"
+fi
+
+rm -f "${markclipper_output_path}"
 
 # print the file name
-echo "/tmp/${file_name}"
+echo "${output_file_path}"
