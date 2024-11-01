@@ -47,18 +47,20 @@ esac
 output_file_path="/tmp/${file_name}"
 
 jq -r ".content.${CONTENT_FORMAT}" "${markclipper_output_path}" > "${output_file_path}"
-if [ -n "${MARKDOWN_FRONTMATTER_KEY_MAPPING:-}" -o -n "${MARKDOWN_FRONTMATTER_ADDITIONAL_ARGS:-}" ]; then
-    additional_args=()
-    if [ -n "${MARKDOWN_FRONTMATTER_ADDITIONAL_ARGS:-}" ]; then
-        additional_args=(${MARKDOWN_FRONTMATTER_ADDITIONAL_ARGS})
+if [ "${CONTENT_FORMAT}" == "markdown" ]; then
+    if [ -n "${MARKDOWN_FRONTMATTER_KEY_MAPPING:-}" -o -n "${MARKDOWN_FRONTMATTER_ADDITIONAL_ARGS:-}" ]; then
+        additional_args=()
+        if [ -n "${MARKDOWN_FRONTMATTER_ADDITIONAL_ARGS:-}" ]; then
+            additional_args=(${MARKDOWN_FRONTMATTER_ADDITIONAL_ARGS})
+        fi
+        python "$(dirname $0)/frontmatter.py" \
+            --metadata "$(jq -r '.metadata' "${markclipper_output_path}")" \
+            --key-mapping "${MARKDOWN_FRONTMATTER_KEY_MAPPING:-}" \
+            "${additional_args[@]}" \
+            > "${output_file_path}.tmp"
+        cat "${output_file_path}" >> "${output_file_path}.tmp"
+        mv "${output_file_path}.tmp" "${output_file_path}"
     fi
-    python "$(dirname $0)/frontmatter.py" \
-        --metadata "$(jq -r '.metadata' "${markclipper_output_path}")" \
-        --key-mapping "${MARKDOWN_FRONTMATTER_KEY_MAPPING:-}" \
-        "${additional_args[@]}" \
-        > "${output_file_path}.tmp"
-    cat "${output_file_path}" >> "${output_file_path}.tmp"
-    mv "${output_file_path}.tmp" "${output_file_path}"
 fi
 
 rm -f "${markclipper_output_path}"
