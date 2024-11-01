@@ -1,4 +1,5 @@
-# This script accepts article metadata as a command line arg and generate Markdown frontmatter for the article.
+# This script accepts article metadata as a command line arg and generate
+# Markdown frontmatter for the article.
 
 import argparse
 import datetime
@@ -20,10 +21,13 @@ if __name__ == "__main__":
         "--key-mapping",
         type=str,
         default=None,
-        help="Map metadata keys to frontmatter keys."
-        " The format is `metadata_key1:frontmatter_key1,metadata_key2:frontmatter_key2`."
-        " Only the keys specified will be included in the frontmatter."
-        " If not provided, all metadata keys will be included. If an empty string is provided, no keys will be included.",
+        help=(
+            "Map metadata keys to frontmatter keys."
+            " The format is `metadata_key1:frontmatter_key1,metadata_key2:frontmatter_key2`."  # noqa: B950
+            " Only the keys specified will be included in the frontmatter."
+            " If not provided, all metadata keys will be included."
+            " If an empty string is provided, no keys will be included."
+        ),
     )
     parser.add_argument(
         "--timestamp-key",

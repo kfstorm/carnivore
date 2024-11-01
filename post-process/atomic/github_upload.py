@@ -1,10 +1,12 @@
-# This script uploads a file to a GitHub repository. If the file already exists, it will be updated.
+# This script uploads a file to a GitHub repository.
+# If the file already exists, it will be updated.
 #
 # Arguments:
 # --file-path (required): The path to the file to upload
 # --repo (required): The repository to upload the file to. Format: owner/repo
 # --repo-path (required): The path in the repository
-# --branch (optional): The branch to upload the file to. Default: the repository’s default branch
+# --branch (optional): The branch to upload the file to.
+#     Default: the repository’s default branch
 #
 # Environment variables:
 # GITHUB_TOKEN: A GitHub token with repo access
@@ -45,7 +47,10 @@ if __name__ == "__main__":
         "--branch",
         type=str,
         default=None,
-        help="The branch to upload the file to. Default: the repository’s default branch",
+        help=(
+            "The branch to upload the file to."
+            " Default: the repository's default branch"
+        ),
     )
 
     args = parser.parse_args()
@@ -55,7 +60,7 @@ if __name__ == "__main__":
         "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
     }
-    github_upload_url = f"https://api.github.com/repos/{args.repo}/contents/{requests.utils.quote(args.repo_path)}"
+    github_upload_url = f"https://api.github.com/repos/{args.repo}/contents/{requests.utils.quote(args.repo_path)}"  # noqa: B950
 
     # Check if the file exists
     response = requests.get(

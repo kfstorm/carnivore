@@ -1,10 +1,7 @@
-import re
 import subprocess
 import os
 import json
 import argparse
-import datetime
-import uuid
 
 
 def invoke_command(command: list[str], input: str = None, **kwargs) -> str:
@@ -19,7 +16,10 @@ def invoke_command(command: list[str], input: str = None, **kwargs) -> str:
     stdout, stderr = process.communicate(input=input.encode() if input else None)
     if process.returncode != 0:
         raise Exception(
-            f"subprocess of command {command} failed with exit code {process.returncode}. \nstderr:\n{stderr.decode()}\nstdout:\n{stdout.decode()}"
+            f"Subprocess of command {command} failed"
+            f" with exit code {process.returncode}."
+            f"\nstderr:\n{stderr.decode()}"
+            f"\nstdout:\n{stdout.decode()}"
         )
     return stdout.decode()
 
