@@ -1,11 +1,9 @@
-import datetime
 import logging
-import os
 import re
-import json
 import argparse
-import shutil
-import asyncio
+import subprocess
+import shlex
+import sys
 from telegram import Update
 from telegram.ext import ApplicationBuilder, MessageHandler
 import telegram.ext.filters as filters
@@ -20,54 +18,30 @@ logger = logging.getLogger(__name__)
 url_pattern = re.compile(r"https?://\S+")
 
 
-# Define the markclipper function (assuming it's already implemented)
-async def markclipper(url: str) -> dict:
-    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
-
-    process = await asyncio.create_subprocess_exec(
-        "python",
-        os.path.join(base_dir, "markclipper/app/main.py"),
-        "--url",
-        url,
-        "--output-dir",
-        output_dir,
-        "--filename-method",
-        "title",
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
+def invoke_command(command: list[str], input: str = None, **kwargs) -> str:
+    # Invoke a command and return the output
+    process = subprocess.Popen(
+        command,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        **kwargs,
     )
-    stdout, stderr = await process.communicate()
+    stdout, stderr = process.communicate(input=input.encode() if input else None)
     if process.returncode != 0:
-        raise Exception(f"Subprocess failed with error: {stderr.decode()}")
+        raise Exception(
+            f"subprocess of command {command} failed with exit code {process.returncode}: {stderr.decode()}"
+        )
+    return stdout.decode()
 
-    output = json.loads(stdout)
 
-    with open(output["metadata_file"], "r") as f:
-        metadata = json.load(f)
-    with open(output["markdown_file"], "r") as f:
-        markdown_content = f.read()
-
-    if not keep_all_files:
-        for k, v in output.items():
-            if k.endswith("_file"):
-                os.remove(v)
-
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir, exist_ok=True)
-    filename = os.path.split(output["markdown_file"])[1]
-    with open(os.path.join(output_dir, filename), "w") as f:
-        title = metadata.get("title")
-        date_created = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        f.write("---\n")
-        f.write(f"title: {title}\n")
-        f.write(f"url: {url}\n")
-        f.write(f"date-created: {date_created}\n")
-        f.write("---\n")
-        f.write(markdown_content)
-
-    return {
-        "title": title,
-    }
+async def process(url: str) -> dict:
+    markclipper_output = invoke_command(
+        [sys.executable, "markclipper/app/main.py", "--url", url]
+    )
+    post_process_command = shlex.split(args.post_process_command)
+    output = invoke_command(post_process_command, input=markclipper_output)
+    return output
 
 
 # Define the message handler
@@ -78,23 +52,18 @@ async def handle_message(update: Update, context) -> None:
     urls = set(urls)
     if urls:
         for url in urls:
+            response_message = f"Processing URL: {url}"
+            processing_message = await update.message.reply_text(response_message)
             try:
-                response_message = f"Processing URL: {url}"
-                await update.message.reply_text(response_message)
-                logging.info(f"Processing URL: {url}")
                 # Call the markclipper function
-                metadata = await markclipper(url)
-                title = metadata["title"]
-                # Generate a response message
-                response_message = f"Processed URL: {url}\nTitle: {title}"
-                logging.info(response_message)
-                # Send the result back to the same chat
-                await update.message.reply_text(response_message)
+                output = await process(url)
             except Exception as e:
                 logging.exception(f"Failed to process URL: {url}")
-                await update.message.reply_text(
-                    f"Failed to process URL: {url}\nError: {str(e)}"
-                )
+                output = f"Failed to process URL: {url}\nError: {str(e)}"
+            # Generate a response message
+            final_response = output
+            # Edit the initial message with the final response
+            await processing_message.edit_text(final_response)
     else:
         await update.message.reply_text("No URL found in the message.")
 
@@ -107,14 +76,10 @@ if __name__ == "__main__":
         "--channel-id", required=True, type=int, help="Telegram channel ID"
     )
     parser.add_argument(
-        "--output-dir", required=True, help="Output directory for the markdown files"
-    )
-    parser.add_argument(
-        "--keep-all-files", action="store_true", help="Keep all temporary files"
+        "--post-process-command", required=True, help="Post process command"
     )
     args = parser.parse_args()
-    output_dir = args.output_dir
-    keep_all_files = args.keep_all_files
+    post_process_command = shlex.split(args.post_process_command)
 
     # Use the parsed arguments
     app = ApplicationBuilder().token(args.token).build()
