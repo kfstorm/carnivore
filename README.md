@@ -60,6 +60,10 @@ docker run --rm -it "${args[@]}" $(docker build . --quiet)
 ### Carnivore Core
 
 - **carnivore/app/main.py**: The main script of the **carnivore** tool. It converts web pages to various formats, currently HTML and Markdown.
+- Tools used:
+  - [monolith](https://github.com/Y2Z/monolith): Save a web page as a single HTML with all resources embedded. The saved HTML page looks exactly like the online version.
+  - [readability](https://github.com/mozilla/readability): Extract the article content from a web page.
+  - [pandoc](https://github.com/jgm/pandoc): Convert between various formats, including HTML and Markdown.
 
 ### Post-Process Scripts
 
