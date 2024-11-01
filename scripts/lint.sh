@@ -2,21 +2,10 @@
 
 set -euo pipefail
 
-# read the `--check` arg from the command line
-check=false
-if [ $# -gt 0 ] && [[ $1 == "--check" ]]; then
-  check=true
-fi
+BASE_DIR=$(dirname "${BASH_SOURCE[0]}")
 
-cd "$(dirname "${BASH_SOURCE[0]}")/.."
+echo "Running shell scripts format..."
+"${BASE_DIR}/format-shell.sh" "$@"
 
-black_args=()
-if [[ "$check" == "true" ]]; then
-  black_args+=(--check --diff)
-fi
-
-# find all Python files
-python_files=$(git ls-files | grep '\.py$' || true)
-
-black "${black_args[@]}" $python_files
-flake8 $python_files
+echo "Running Python scripts format..."
+"${BASE_DIR}/format-python.sh" "$@"
