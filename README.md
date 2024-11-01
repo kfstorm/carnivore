@@ -2,7 +2,7 @@
 
 **NOTE: This project is still in early development.**
 
-This project is a Telegram bot that processes URLs sent in a specific channel. The bot converts web pages to Markdown format and do various kinds of post-processing.
+This project is a Telegram bot that processes URLs sent in a specific channel. The bot converts web pages to Markdown (and HTML) format and do various kinds of post-processing.
 
 **Owning your data is important. Saving your data with open formats is also important.**
 
@@ -31,7 +31,7 @@ You can customize the post-processing by:
 
 To configure the post-processing command, set the `POST_PROCESS_COMMAND` environment variable. The command should be a shell command.
 
-e.g. To use the pre-defined post-processing command to upload the clipped Markdown file to a GitHub repository:
+e.g. To use the pre-defined post-processing command to upload the clipped Markdown and HTML files to a GitHub repository:
 
 ```bash
 args=(
