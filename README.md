@@ -13,11 +13,12 @@ This project is a Telegram bot that processes URLs sent in a specific channel. T
     ```sh
     git clone https://github.com/kfstorm/markclipper.git
     cd markclipper
-    docker run --rm -it \
-        -e TELEGRAM_TOKEN=... \
-        -e TELEGRAM_CHANNEL_ID=... \
-        # Add more environment variables as needed \
-        $(docker build . --quiet)
+    args=(
+        -e TELEGRAM_TOKEN=...
+        -e TELEGRAM_CHANNEL_ID=...
+        # Add more environment variables as needed
+    )
+    docker run --rm -it "${args[@]}" $(docker build . --quiet)
     ```
 
 2. Send a URL in the specified Telegram channel. The bot will process the URL and send a reply message with the metadata of the article. (This is the default behavior if you don't customize the post-processing.)
