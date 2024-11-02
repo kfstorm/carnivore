@@ -18,23 +18,34 @@ logger = logging.getLogger(__name__)
 url_pattern = re.compile(r"https?://\S+")
 
 
-def invoke_command(command: list[str], input: str = None, **kwargs) -> str:
+def invoke_command(
+    command: list[str],
+    input: str = None,
+    redirect_stderr_to_stdout: bool = False,
+    **kwargs,
+) -> str:
     # Invoke a command and return the output
     process = subprocess.Popen(
         command,
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        stderr=(subprocess.STDOUT if redirect_stderr_to_stdout else subprocess.PIPE),
         **kwargs,
     )
     stdout, stderr = process.communicate(input=input.encode() if input else None)
     if process.returncode != 0:
-        raise Exception(
+        message = (
             f"Subprocess of command {command} failed"
             f" with exit code {process.returncode}."
-            f"\nstderr:\n{stderr.decode()}"
-            f"\nstdout:\n{stdout.decode()}"
         )
+        if stdout and stderr:
+            message += f"\nstderr:\n{stderr.decode()}"
+            message += f"\nstdout:\n{stdout.decode()}"
+        elif stdout:
+            message += f"\n{stdout.decode()}"
+        elif stderr:
+            message += f"\n{stderr.decode()}"
+        raise Exception(message)
     return stdout.decode()
 
 
