@@ -22,12 +22,12 @@ cat > "${carnivore_output_path}"
 
 title=$(jq -r ".metadata.title" "${carnivore_output_path}")
 # trim title
-title=$(echo "$title" | sed 's/^\s*//; s/\s*$//;')
+title=$(echo "$title" | sed -E 's/^[[:space:]]*//; s/[[:space:]]*$//;')
 if [ -z "${title}" ]; then
   title=$(jq -r ".metadata.url" "${carnivore_output_path}")
 fi
 # replace
-base_file_name=$(echo "$title" | sed 's/[<>:"/\\|?*]/-/g; s/\s/ /g;')
+base_file_name=$(echo "$title" | sed -E 's/[<>:"/\\|?*]/-/g; s/[[:space:]]/ /g;')
 if [ -z "${base_file_name}" ]; then
   base_file_name="untitled"
 fi
