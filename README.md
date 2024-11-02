@@ -16,12 +16,11 @@ This project is a Telegram bot that processes URLs sent in a specific channel. T
     args=(
         -e TELEGRAM_TOKEN=...
         -e TELEGRAM_CHANNEL_ID=...
-        # Add more environment variables as needed
     )
-    docker run --rm -it "${args[@]}" $(docker build . --quiet)
+    docker run --rm -it "${args[@]}" -v ./data:/app/data $(docker build . --quiet)
     ```
 
-2. Send a URL in the specified Telegram channel. The bot will process the URL and send a reply message with the metadata of the article. (This is the default behavior if you don't customize the post-processing.)
+2. Send a URL in the specified Telegram channel. The bot will process the URL and (the post-processing part) save the article content in Markdown format in the `data` directory.
 
 ## Post-Processing Customization
 
@@ -67,5 +66,5 @@ docker run --rm -it "${args[@]}" $(docker build . --quiet)
 
 ### Post-Process Scripts
 
-- [post-process/print_metadata.sh](process/print_metadata.sh): A script that prints the metadata of the processed content. (The default post-processing command for demonstration purposes.)
+- [post-process/save_files.sh](process/save_files.sh): A script that saves the processed content to any directory (customizable via the `CARNIVORE_OUTPUT_DIR` environment variable).
 - [post-process/upload_to_github.sh](post-process/upload_to_github.sh): A script that uploads the processed content to a GitHub repository.

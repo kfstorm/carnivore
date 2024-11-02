@@ -5,7 +5,7 @@ set -euo pipefail
 BASE_DIR=$(dirname "$0")
 
 # Get the file paths from save_files.sh
-file_paths=$("${BASE_DIR}/atomic/save_files.sh" "${CONTENT_FORMATS:-markdown}")
+file_paths=$("${BASE_DIR}/atomic/save_files.sh")
 
 OPTIONAL_ARGS=()
 if [ -n "${GITHUB_BRANCH:-}" ]; then

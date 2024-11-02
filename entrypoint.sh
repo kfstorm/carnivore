@@ -3,7 +3,7 @@
 set -euo pipefail
 
 if [ -z "${POST_PROCESS_COMMAND:-}" ]; then
-  POST_PROCESS_COMMAND="post-process/print_metadata.sh"
+  POST_PROCESS_COMMAND="post-process/save_files.sh"
 fi
 
 python telegram-bot/app/main.py \
