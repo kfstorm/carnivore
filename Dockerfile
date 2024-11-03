@@ -20,7 +20,7 @@ COPY telegram-bot/requirements.txt telegram-bot/
 COPY post-process/requirements.txt post-process/
 RUN pip install --upgrade pip && pip install --no-cache-dir -r carnivore/requirements.txt -r telegram-bot/requirements.txt -r post-process/requirements.txt
 # Install browser
-RUN playwright install firefox
+RUN playwright install firefox && playwright install-deps firefox
 
 COPY carnivore/app/readability/index.mjs carnivore/app/readability/
 COPY carnivore/app/main.py carnivore/app/
