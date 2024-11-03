@@ -1,12 +1,28 @@
-FROM python:3.13.0
+FROM rust:1.82.0-bookworm AS monolith_builder
+
+ARG MONOLITH_VERSION=2.8.3
+RUN curl -fsSL "https://github.com/Y2Z/monolith/archive/refs/tags/v${MONOLITH_VERSION}.zip" -o /tmp/monolith.zip && \
+    mkdir -p /tmp/monolith && \
+    unzip /tmp/monolith.zip -d /tmp/monolith && \
+    cd /tmp/monolith/monolith-${MONOLITH_VERSION} && \
+    make install && \
+    rm -rf /tmp/monolith /tmp/monolith.zip
+
+FROM python:3.13.0-slim
 
 ENV NODE_ENV=production
 
 # Install dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends nodejs npm pandoc jq curl && rm -rf /var/lib/apt/lists/*
-RUN curl --proto '=https' --tlsv1.2 https://sh.rustup.rs -sSf | sh -s -- -y
-ENV PATH="/root/.cargo/bin:$PATH"
-RUN cargo install monolith
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    nodejs npm \
+    jq \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+ARG PANDOC_VERSION=3.5
+RUN curl -fsSL "https://github.com/jgm/pandoc/releases/download/${PANDOC_VERSION}/pandoc-${PANDOC_VERSION}-linux-$(dpkg --print-architecture).tar.gz" -o pandoc.tar.gz && \
+    tar -xzf pandoc.tar.gz -C /usr/local --strip-components 1 && \
+    rm pandoc.tar.gz
+COPY --from=monolith_builder /usr/local/cargo/bin/monolith /usr/local/bin/monolith
 
 WORKDIR /app
 
@@ -19,8 +35,9 @@ COPY carnivore/requirements.txt carnivore/
 COPY telegram-bot/requirements.txt telegram-bot/
 COPY post-process/requirements.txt post-process/
 RUN pip install --upgrade pip && pip install --no-cache-dir -r carnivore/requirements.txt -r telegram-bot/requirements.txt -r post-process/requirements.txt
+
 # Install browser
-RUN playwright install firefox && playwright install-deps firefox
+RUN playwright install firefox && playwright install-deps firefox && rm -rf /var/lib/apt/lists/*
 
 COPY carnivore/app/readability/index.mjs carnivore/app/readability/
 COPY carnivore/app/main.py carnivore/app/
