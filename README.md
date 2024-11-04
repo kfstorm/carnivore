@@ -8,18 +8,18 @@ Carnivore is a simple tool that listens to your web page article archiving needs
 
 ## Features
 
-1. Trigger web page archiving by:
+1. Trigger web page archiving by various methods.
     - Send a URL to a Telegram channel with a Telegram bot involved.
     - (More triggering methods could be added as needed.)
-2. Archive the web page with various formats:
+2. Archive the web page with various formats.
     - A single HTML file with all CSS/JavaScript/image/... resources included. Looks exactly like the original web page. (Thank you, [monolith](https://github.com/Y2Z/monolith)!)
     - A polished version of the above HTML file that removes clutter and only keeps the article content. (Thank you, [readability](https://github.com/mozilla/readability)!)
     - A Markdown version of the polished web page. (Thank you, [pandoc](https://github.com/jgm/pandoc)!)
     - (More formats like PDF and whole page image could be added as needed.)
-3. Process the archived files the way you like:
+3. Process the archived files the way you like.
     - Save files to a local path.
     - Upload files to a GitHub repo.
-    - (Call a customized post-processing script written by yourself.)
+    - Call a customized post-processing script written by yourself.
     - (More post-processing methods could be added as needed.)
 
 ## Usage
