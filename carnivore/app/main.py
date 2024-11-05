@@ -1,5 +1,5 @@
 import logging
-import subprocess
+import common
 import os
 import json
 import argparse
@@ -7,40 +7,9 @@ import tempfile
 from playwright.sync_api import sync_playwright
 
 
-def invoke_command(
-    command: list[str],
-    input: str = None,
-    redirect_stderr_to_stdout: bool = False,
-    **kwargs,
-) -> str:
-    # Invoke a command and return the output
-    process = subprocess.Popen(
-        command,
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=(subprocess.STDOUT if redirect_stderr_to_stdout else subprocess.PIPE),
-        **kwargs,
-    )
-    stdout, stderr = process.communicate(input=input.encode() if input else None)
-    if process.returncode != 0:
-        message = (
-            f"Subprocess of command {command} failed"
-            f" with exit code {process.returncode}."
-        )
-        if stdout and stderr:
-            message += f"\nstderr:\n{stderr.decode()}"
-            message += f"\nstdout:\n{stdout.decode()}"
-        elif stdout:
-            message += f"\n{stdout.decode()}"
-        elif stderr:
-            message += f"\n{stderr.decode()}"
-        raise Exception(message)
-    return stdout.decode()
-
-
 def get_full_html(url: str) -> str:
     # Call monolith to get HTML
-    return invoke_command(["monolith", "-v", url])
+    return common.invoke_command(["monolith", "-v", url])
 
 
 def get_rendered_html(html: str):
@@ -62,7 +31,7 @@ def get_rendered_html(html: str):
 
 def get_polished_data(html: str):
     # Call readability to get polished HTML and metadata
-    output = invoke_command(
+    output = common.invoke_command(
         ["node", "index.mjs"],
         html,
         cwd=os.path.join(os.path.dirname(os.path.realpath(__file__)), "readability"),
@@ -72,7 +41,7 @@ def get_polished_data(html: str):
 
 def get_markdown(html: str):
     # Convert HTML to Markdown using pandoc
-    return invoke_command(
+    return common.invoke_command(
         [
             "pandoc",
             "-f",

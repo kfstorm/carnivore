@@ -1,9 +1,7 @@
 import logging
 import re
 import argparse
-import subprocess
-import shlex
-import sys
+import common
 from telegram import Update
 from telegram.ext import ApplicationBuilder, MessageHandler
 import telegram.ext.filters as filters
@@ -18,46 +16,6 @@ logger = logging.getLogger(__name__)
 url_pattern = re.compile(r"https?://\S+")
 
 
-def invoke_command(
-    command: list[str],
-    input: str = None,
-    redirect_stderr_to_stdout: bool = False,
-    **kwargs,
-) -> str:
-    # Invoke a command and return the output
-    process = subprocess.Popen(
-        command,
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=(subprocess.STDOUT if redirect_stderr_to_stdout else subprocess.PIPE),
-        **kwargs,
-    )
-    stdout, stderr = process.communicate(input=input.encode() if input else None)
-    if process.returncode != 0:
-        message = (
-            f"Subprocess of command {command} failed"
-            f" with exit code {process.returncode}."
-        )
-        if stdout and stderr:
-            message += f"\nstderr:\n{stderr.decode()}"
-            message += f"\nstdout:\n{stdout.decode()}"
-        elif stdout:
-            message += f"\n{stdout.decode()}"
-        elif stderr:
-            message += f"\n{stderr.decode()}"
-        raise Exception(message)
-    return stdout.decode()
-
-
-async def process(url: str) -> dict:
-    carnivore_output = invoke_command(
-        [sys.executable, "carnivore/app/main.py", "--url", url]
-    )
-    post_process_command = shlex.split(args.post_process_command)
-    output = invoke_command(post_process_command, input=carnivore_output)
-    return output
-
-
 # Define the message handler
 async def handle_message(update: Update, context) -> None:
     text = update.message.text
@@ -70,7 +28,7 @@ async def handle_message(update: Update, context) -> None:
             processing_message = await update.message.reply_text(response_message)
             try:
                 # Call the carnivore function
-                output = await process(url)
+                output = common.process(url, args.post_process_command)
             except Exception as e:
                 logging.exception(f"Failed to process URL: {url}")
                 output = f"Failed to process URL: {url}\nError: {str(e)}"
@@ -90,10 +48,9 @@ if __name__ == "__main__":
         "--channel-id", required=True, type=int, help="Telegram channel ID"
     )
     parser.add_argument(
-        "--post-process-command", required=True, help="Post process command"
+        "--post-process-command", required=True, type=str, help="Post process command"
     )
     args = parser.parse_args()
-    post_process_command = shlex.split(args.post_process_command)
 
     # Use the parsed arguments
     app = ApplicationBuilder().token(args.token).build()

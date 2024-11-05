@@ -39,9 +39,10 @@ RUN pip install --upgrade pip && pip install --no-cache-dir -r carnivore/require
 # Install browser
 RUN playwright install firefox && playwright install-deps firefox && rm -rf /var/lib/apt/lists/*
 
-COPY carnivore/app/readability/index.mjs carnivore/app/readability/
-COPY carnivore/app/main.py carnivore/app/
-COPY telegram-bot/app/main.py telegram-bot/app/
+COPY common/ common/
+COPY carnivore/ carnivore/
+COPY telegram-bot/ telegram-bot/
+COPY interactive-cli/ interactive-cli/
 COPY post-process/ post-process/
 COPY entrypoint.sh .
 
