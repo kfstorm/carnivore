@@ -9,7 +9,7 @@
 #     Default: the repository’s default branch
 #
 # Environment variables:
-# GITHUB_TOKEN: A GitHub token with repo access
+# CARNIVORE_GITHUB_TOKEN: A GitHub token with repo access
 #
 # Output:
 # The HTML URL of the uploaded file
@@ -20,16 +20,18 @@ import requests
 import argparse
 
 if __name__ == "__main__":
-    github_token = os.getenv("GITHUB_TOKEN")
-    if not github_token:
-        raise ValueError("GitHub token not provided")
-
     parser = argparse.ArgumentParser(description="Upload a file to a GitHub repository")
     parser.add_argument(
         "--file-path",
         type=str,
         required=True,
         help="The path to the file to upload",
+    )
+    parser.add_argument(
+        "--token",
+        type=str,
+        required=True,
+        help="The GitHub token to access the repository",
     )
     parser.add_argument(
         "--repo",
@@ -56,7 +58,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     common_headers = {
-        "Authorization": f"Bearer {github_token}",
+        "Authorization": f"Bearer {args.token}",
         "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
     }

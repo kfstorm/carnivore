@@ -4,8 +4,8 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-if [[ -z ${POST_PROCESS_COMMAND:-} ]]; then
-  POST_PROCESS_COMMAND="post-process/save_files.sh"
+if [[ -z ${CARNIVORE_POST_PROCESS_COMMAND:-} ]]; then
+  CARNIVORE_POST_PROCESS_COMMAND="post-process/save_files.sh"
 fi
 
 if [[ -z ${CARNIVORE_APPLICATION:-} ]]; then
@@ -21,16 +21,16 @@ if [[ ! -e ${application_script} ]]; then
 fi
 
 args=(
-  --post-process-command "${POST_PROCESS_COMMAND}"
+  --post-process-command "${CARNIVORE_POST_PROCESS_COMMAND}"
 )
 
 if [[ ${CARNIVORE_APPLICATION} == "telegram-bot" ]]; then
-  if [[ -n ${TELEGRAM_TOKEN:-} ]]; then
-    args+=(--token "${TELEGRAM_TOKEN}")
+  if [[ -n ${CARNIVORE_TELEGRAM_TOKEN:-} ]]; then
+    args+=(--token "${CARNIVORE_TELEGRAM_TOKEN}")
   fi
 
-  if [[ -n ${TELEGRAM_CHANNEL_ID:-} ]]; then
-    args+=(--channel-id "${TELEGRAM_CHANNEL_ID}")
+  if [[ -n ${CARNIVORE_TELEGRAM_CHANNEL_ID:-} ]]; then
+    args+=(--channel-id "${CARNIVORE_TELEGRAM_CHANNEL_ID}")
   fi
 fi
 

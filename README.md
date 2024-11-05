@@ -48,8 +48,8 @@ There are multiple ways to use Carnivore. Here are some examples:
     cd carnivore
     args=(
         -e CARNIVORE_APPLICATION=telegram-bot
-        -e TELEGRAM_TOKEN=...
-        -e TELEGRAM_CHANNEL_ID=...
+        -e CARNIVORE_TELEGRAM_TOKEN=...
+        -e CARNIVORE_TELEGRAM_CHANNEL_ID=...
     )
     docker run --rm -it "${args[@]}" -v ./data:/app/data $(docker build . --quiet)
     ```
@@ -63,23 +63,23 @@ You can customize the post-processing by:
 1. Choose a pre-defined post-processing command.
 2. Write your post-processing command and mount it into the container.
 
-To configure the post-processing command, set the `POST_PROCESS_COMMAND` environment variable. The command should be a shell command.
+To configure the post-processing command, set the `CARNIVORE_POST_PROCESS_COMMAND` environment variable. The command should be a shell command.
 
 e.g. To use the pre-defined post-processing command to upload the clipped Markdown and HTML files to a GitHub repository:
 
 ```bash
 args=(
     -e CARNIVORE_APPLICATION=telegram-bot
-    -e TELEGRAM_TOKEN=...
-    -e TELEGRAM_CHANNEL_ID=...
-    -e POST_PROCESS_COMMAND=post-process/upload_to_github.sh
-    -e GITHUB_REPO=username/repo_name
-    -e GITHUB_BRANCH=master # optional.
-    -e GITHUB_REPO_DIR=path/in/repo
-    -e GITHUB_TOKEN=...
-    -e CONTENT_FORMATS="markdown,html,full_html,rendered_html" # optional. upload multiple versions of the web page. Default: markdown.
-    -e MARKDOWN_FRONTMATTER_KEY_MAPPING="url:url,title:title" # optional. you may want to add frontmatter at the beginning of the Markdown file.
-    -e MARKDOWN_FRONTMATTER_ADDITIONAL_ARGS="--timestamp-key date-created" # optional. you may want to add the timestamp to the frontmatter.
+    -e CARNIVORE_TELEGRAM_TOKEN=...
+    -e CARNIVORE_TELEGRAM_CHANNEL_ID=...
+    -e CARNIVORE_POST_PROCESS_COMMAND=post-process/upload_to_github.sh
+    -e CARNIVORE_GITHUB_REPO=username/repo_name
+    -e CARNIVORE_GITHUB_BRANCH=master # optional.
+    -e CARNIVORE_GITHUB_REPO_DIR=path/in/repo
+    -e CARNIVORE_GITHUB_TOKEN=...
+    -e CARNIVORE_OUTPUT_FORMATS="markdown,html,full_html,rendered_html" # optional. upload multiple formats of the web page. Default: markdown.
+    -e CARNIVORE_MARKDOWN_FRONTMATTER_KEY_MAPPING="url:url,title:title" # optional. you may want to add frontmatter at the beginning of the Markdown file.
+    -e CARNIVORE_MARKDOWN_FRONTMATTER_ADDITIONAL_ARGS="--timestamp-key date-created" # optional. you may want to add the timestamp to the frontmatter.
     -e TZ=Asia/Shanghai # optional. you may want to customize the timezone.
 )
 docker run --rm -it "${args[@]}" $(docker build . --quiet)
