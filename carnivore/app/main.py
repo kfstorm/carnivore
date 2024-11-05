@@ -9,7 +9,7 @@ from playwright.sync_api import sync_playwright
 
 def get_full_html(url: str) -> str:
     # Call monolith to get HTML
-    return common.invoke_command(["monolith", "-v", url])
+    return common.invoke_command(["monolith", "-v", url], no_stderr_warning=True)
 
 
 def get_rendered_html(html: str):
