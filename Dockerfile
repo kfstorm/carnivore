@@ -37,7 +37,7 @@ COPY post-process/requirements.txt post-process/
 RUN pip install --upgrade pip && pip install --no-cache-dir -r carnivore/requirements.txt -r applications/telegram-bot/requirements.txt -r post-process/requirements.txt
 
 # Install browser
-RUN playwright install firefox && playwright install-deps firefox && rm -rf /var/lib/apt/lists/*
+RUN playwright install --with-deps firefox
 
 COPY common/ common/
 COPY carnivore/ carnivore/
