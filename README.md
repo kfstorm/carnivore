@@ -69,9 +69,6 @@ e.g. To use the pre-defined post-processing command to upload the clipped Markdo
 
 ```bash
 args=(
-    -e CARNIVORE_APPLICATION=telegram-bot
-    -e CARNIVORE_TELEGRAM_TOKEN=...
-    -e CARNIVORE_TELEGRAM_CHANNEL_ID=...
     -e CARNIVORE_POST_PROCESS_COMMAND=post-process/upload_to_github.sh
     -e CARNIVORE_GITHUB_REPO=username/repo_name
     -e CARNIVORE_GITHUB_BRANCH=master # optional.
