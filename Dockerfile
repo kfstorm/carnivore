@@ -32,17 +32,16 @@ RUN cd carnivore/app/readability && npm install && npm cache clean --force
 
 # Install Python packages
 COPY carnivore/requirements.txt carnivore/
-COPY telegram-bot/requirements.txt telegram-bot/
+COPY applications/telegram-bot/requirements.txt applications/telegram-bot/
 COPY post-process/requirements.txt post-process/
-RUN pip install --upgrade pip && pip install --no-cache-dir -r carnivore/requirements.txt -r telegram-bot/requirements.txt -r post-process/requirements.txt
+RUN pip install --upgrade pip && pip install --no-cache-dir -r carnivore/requirements.txt -r applications/telegram-bot/requirements.txt -r post-process/requirements.txt
 
 # Install browser
 RUN playwright install firefox && playwright install-deps firefox && rm -rf /var/lib/apt/lists/*
 
 COPY common/ common/
 COPY carnivore/ carnivore/
-COPY telegram-bot/ telegram-bot/
-COPY interactive-cli/ interactive-cli/
+COPY applications/ applications/
 COPY post-process/ post-process/
 COPY entrypoint.sh .
 

@@ -9,6 +9,7 @@ Carnivore is a simple tool that listens to your web page article archiving needs
 ## Features
 
 1. Trigger web page archiving by various methods.
+    - Paste a URL to the interactive CLI.
     - Send a URL to a Telegram channel with a Telegram bot involved.
     - (More triggering methods could be added as needed.)
 2. Archive the web page with various formats.
@@ -24,19 +25,36 @@ Carnivore is a simple tool that listens to your web page article archiving needs
 
 ## Usage
 
-1. Start the service.
+There are multiple ways to use Carnivore. Here are some examples:
+
+### Run Carnivore as an interactive CLI tool
+
+1. Start Carnivore.
+
+    ```sh
+    git clone https://github.com/kfstorm/carnivore.git
+    cd carnivore
+    docker run --rm -it -v ./data:/app/data $(docker build . --quiet)
+    ```
+
+2. Paste a URL to the interactive CLI. The bot will process the URL and save the article content in Markdown format in the `data` directory.
+
+### Run Carnivore as a Telegram bot
+
+1. Start Carnivore.
 
     ```sh
     git clone https://github.com/kfstorm/carnivore.git
     cd carnivore
     args=(
+        -e CARNIVORE_APPLICATION=telegram-bot
         -e TELEGRAM_TOKEN=...
         -e TELEGRAM_CHANNEL_ID=...
     )
     docker run --rm -it "${args[@]}" -v ./data:/app/data $(docker build . --quiet)
     ```
 
-2. Send a URL to the specified Telegram channel. The bot will process the URL and (the post-processing part) save the article content in Markdown format in the `data` directory.
+2. Send a URL to the Telegram channel. The bot will process the URL and save the article content in Markdown format in the `data` directory.
 
 ## Post-processing Customization
 
@@ -51,6 +69,7 @@ e.g. To use the pre-defined post-processing command to upload the clipped Markdo
 
 ```bash
 args=(
+    -e CARNIVORE_APPLICATION=telegram-bot
     -e TELEGRAM_TOKEN=...
     -e TELEGRAM_CHANNEL_ID=...
     -e POST_PROCESS_COMMAND=post-process/upload_to_github.sh
@@ -68,9 +87,11 @@ docker run --rm -it "${args[@]}" $(docker build . --quiet)
 
 ## Components
 
-### Telegram Bot
+### Applications
 
-- **telegram-bot/app/main.py**: The main script for the Telegram bot. It listens for URLs in messages in a specific channel, archives webpages using **Carnivore Core**, and invokes a post-processing command for further processing.
+- **applications/interactive-cli**: An interactive CLI tool that reads URLs pasted in the terminal, archives webpages using **Carnivore Core**, and invokes a post-processing command for further processing.
+
+- **applications/telegram-bot**: A Telegram bot that listens for URLs in messages in a specific channel, archives webpages using **Carnivore Core**, and invokes a post-processing command for further processing.
 
 ### Carnivore Core
 
