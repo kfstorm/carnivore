@@ -82,3 +82,8 @@ for carnivore_output_format in "${CARNIVORE_OUTPUT_FORMATS[@]}"; do
 done
 
 rm -f "${temp_file}"
+
+if [ ${#output_files[@]} -eq 0 ]; then
+  echo "No output files were saved." >&2
+  exit 1
+fi
