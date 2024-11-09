@@ -19,6 +19,18 @@ def get_rendered_html_from_url(url: str) -> str:
         browser = p.firefox.launch(headless=True)
         try:
             page = browser.new_page()
+            # Intercept network requests to block resources such as images.
+            # Since we use monolith to localize all resources,
+            # there's no need to load some resources during rendering stage,
+            # which only slows down the rendering and costs more data usage.
+            page.route(
+                "**/*",
+                lambda route, request: (
+                    route.abort()
+                    if request.resource_type in ("image", "media", "font")
+                    else route.continue_()
+                ),
+            )
             page.goto(url)
             return page.content()
         finally:
