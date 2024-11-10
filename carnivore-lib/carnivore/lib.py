@@ -7,6 +7,15 @@ from playwright.async_api import async_playwright
 
 
 class Carnivore:
+    def __init__(self):
+        self.progress_callback = None
+        pass
+
+    def set_progress_callback(self, callback):
+        # Set a callback function to report progress
+        self.progress_callback = callback
+        pass
+
     async def _get_full_html(self, url: str, html: str) -> str:
         # Call monolith to get HTML
         return await util.invoke_command(
@@ -61,12 +70,19 @@ class Carnivore:
             html,
         )
 
+    async def _report_progress(self, message: str):
+        if self.progress_callback:
+            await self.progress_callback(message)
+
     async def archive(self, url: str):
         # Render the URL with a browser before processing with monolith
         # to fix parsing of web pages whose article content is loaded by JavaScript.
         # e.g. https://battleda.sh/blog/ea-account-takeover
+        await self._report_progress("Rendering URL with browser")
         rendered_html = await self._get_rendered_html_from_url(url)
+        await self._report_progress("Getting full HTML")
         full_html = await self._get_full_html(url, rendered_html)
+        await self._report_progress("Polishing HTML")
         polished_output = await self._get_polished_data(full_html)
         polished_html = polished_output["html"]
         metadata = polished_output["metadata"]
@@ -80,6 +96,9 @@ class Carnivore:
         ]:
             if html:
                 try:
+                    await self._report_progress(
+                        f"Converting HTML to Markdown with {html_type}"
+                    )
                     markdown = await self._get_markdown(html)
                     if markdown:
                         break

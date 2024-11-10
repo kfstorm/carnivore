@@ -13,12 +13,16 @@ async def main():
     )
     args = parser.parse_args()
 
+    async def append_text(message: str):
+        print(message)
+
     while True:
         url = input("Enter a URL: ")
         url = url.strip()
         print("Processing URL...")
         try:
             c = carnivore.Carnivore()
+            c.set_progress_callback(append_text)
             carnivore_output = await c.archive(url)
             output = await util.post_process(
                 carnivore_output, args.post_process_command
@@ -26,6 +30,7 @@ async def main():
         except Exception as e:
             print(f"Failed to process URL: {str(e)}")
             continue
+        print()
         print(output)
 
 

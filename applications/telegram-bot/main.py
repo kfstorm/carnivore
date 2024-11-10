@@ -25,22 +25,33 @@ async def handle_message(update: Update, context) -> None:
     urls = set(urls)
     if urls:
         for url in urls:
-            response_message = f"Processing URL: {url}"
-            processing_message = await update.message.reply_text(response_message)
+            messages = []
+            response = [None]
+
+            async def append_text(message: str, messages=messages, response=response):
+                messages.append(message)
+                final_message = "\n".join(messages)
+                if not response[0]:
+                    response[0] = await update.message.reply_text(final_message)
+                else:
+                    await response[0].edit_text(final_message)
+
+            await append_text(f"Processing URL: {url}")
             try:
                 # Call Carnivore
                 c = carnivore.Carnivore()
+                c.set_progress_callback(append_text)
                 carnivore_output = await c.archive(url)
+                await append_text("Post-processing output")
                 output = await util.post_process(
                     carnivore_output, args.post_process_command
                 )
             except Exception as e:
                 logging.exception(f"Failed to process URL: {url}")
                 output = f"Failed to process URL: {url}\nError: {str(e)}"
-            # Generate a response message
-            final_response = output
-            # Edit the initial message with the final response
-            await processing_message.edit_text(final_response)
+
+            messages.append("")
+            await append_text(output)
     else:
         await update.message.reply_text("No URL found in the message.")
 
