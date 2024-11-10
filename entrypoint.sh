@@ -12,7 +12,7 @@ if [[ -z ${CARNIVORE_APPLICATION:-} ]]; then
   CARNIVORE_APPLICATION="interactive-cli"
 fi
 
-application_script="applications/${CARNIVORE_APPLICATION}/app/main.py"
+application_script="applications/${CARNIVORE_APPLICATION}/main.py"
 
 if [[ ! -e ${application_script} ]]; then
   echo "Invalid Carnivore application: ${CARNIVORE_APPLICATION}" >&2
@@ -34,6 +34,4 @@ if [[ ${CARNIVORE_APPLICATION} == "telegram-bot" ]]; then
   fi
 fi
 
-ROOT_DIR="$(dirname "$0")"
-export PYTHONPATH="${PYTHONPATH:-}:${ROOT_DIR}"
 python "${application_script}" "${args[@]}"

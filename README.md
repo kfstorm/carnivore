@@ -86,13 +86,13 @@ docker run --rm -it "${args[@]}" $(docker build . --quiet)
 
 ### Applications
 
-- **applications/interactive-cli**: An interactive CLI tool that reads URLs pasted in the terminal, archives webpages using **Carnivore Core**, and invokes a post-processing command for further processing.
+- **applications/interactive-cli**: An interactive CLI tool that reads URLs pasted in the terminal, archives webpages using **Carnivore Lib**, and invokes a post-processing command for further processing.
 
-- **applications/telegram-bot**: A Telegram bot that listens for URLs in messages in a specific channel, archives webpages using **Carnivore Core**, and invokes a post-processing command for further processing.
+- **applications/telegram-bot**: A Telegram bot that listens for URLs in messages in a specific channel, archives webpages using **Carnivore Lib**, and invokes a post-processing command for further processing.
 
-### Carnivore Core
+### Carnivore Lib
 
-- **carnivore/app/main.py**: The main script for web page archiving purposes. It converts web pages to various formats, currently HTML and Markdown.
+- **carnivore-lib/**: The main code for web page archiving purposes. It converts web pages to various formats, currently HTML and Markdown.
 - Tools used:
   - [monolith](https://github.com/Y2Z/monolith): Save a web page as a single HTML with all resources embedded. The saved HTML page looks exactly like the online version.
   - [readability](https://github.com/mozilla/readability): Extract the article content from a web page.

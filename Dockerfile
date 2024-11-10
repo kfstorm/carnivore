@@ -27,20 +27,20 @@ COPY --from=monolith_builder /usr/local/cargo/bin/monolith /usr/local/bin/monoli
 WORKDIR /app
 
 # Install node modules
-COPY carnivore/app/readability/package*.json carnivore/app/readability/
-RUN cd carnivore/app/readability && npm install && npm cache clean --force
+COPY carnivore-lib/carnivore/readability/package*.json carnivore-lib/carnivore/readability/
+RUN cd carnivore-lib/carnivore/readability && npm install && npm cache clean --force
+
+# Install Playwright and Firefox. (This is to avoid re-build this layer if carnivore-lib code has changed.)
+RUN pip install playwright==1.48.0 && playwright install --with-deps firefox
 
 # Install Python packages
-COPY carnivore/requirements.txt carnivore/
 COPY applications/telegram-bot/requirements.txt applications/telegram-bot/
 COPY post-process/requirements.txt post-process/
-RUN pip install --upgrade pip && pip install --no-cache-dir -r carnivore/requirements.txt -r applications/telegram-bot/requirements.txt -r post-process/requirements.txt
+RUN pip install --upgrade pip && pip install --no-cache-dir -r applications/telegram-bot/requirements.txt -r post-process/requirements.txt
 
-# Install browser
-RUN playwright install --with-deps firefox
-
-COPY common/ common/
-COPY carnivore/ carnivore/
+# Copy code and install carnivore-lib
+COPY carnivore-lib/ carnivore-lib/
+RUN pip install -e carnivore-lib
 COPY applications/ applications/
 COPY post-process/ post-process/
 COPY entrypoint.sh .

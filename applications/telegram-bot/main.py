@@ -1,7 +1,8 @@
 import logging
 import re
 import argparse
-import common
+import carnivore
+from carnivore import util
 from telegram import Update
 from telegram.ext import ApplicationBuilder, MessageHandler
 import telegram.ext.filters as filters
@@ -27,8 +28,12 @@ async def handle_message(update: Update, context) -> None:
             response_message = f"Processing URL: {url}"
             processing_message = await update.message.reply_text(response_message)
             try:
-                # Call the carnivore function
-                output = common.process(url, args.post_process_command)
+                # Call Carnivore
+                c = carnivore.Carnivore()
+                carnivore_output = await c.archive(url)
+                output = await util.post_process(
+                    carnivore_output, args.post_process_command
+                )
             except Exception as e:
                 logging.exception(f"Failed to process URL: {url}")
                 output = f"Failed to process URL: {url}\nError: {str(e)}"

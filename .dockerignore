@@ -1,1 +1,2 @@
-carnivore/app/readability/node_modules
+**/node_modules
+**/*.egg-info
