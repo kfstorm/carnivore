@@ -50,7 +50,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Telegram Bot")
     parser.add_argument("--token", required=True, help="Telegram bot token")
     parser.add_argument(
-        "--channel-id", required=True, type=int, help="Telegram channel ID"
+        "--channel-id", required=False, type=int, help="Telegram channel ID"
     )
     parser.add_argument(
         "--post-process-command", required=True, type=str, help="Post process command"
@@ -59,10 +59,8 @@ if __name__ == "__main__":
 
     # Use the parsed arguments
     app = ApplicationBuilder().token(args.token).build()
-    app.add_handler(
-        MessageHandler(
-            filters.Chat(chat_id=args.channel_id) & filters.TEXT & ~filters.COMMAND,
-            handle_message,
-        )
-    )
+    filter = filters.TEXT & ~filters.COMMAND
+    if args.channel_id:
+        filter = filter & filters.Chat(chat_id=args.channel_id)
+    app.add_handler(MessageHandler(filter, handle_message))
     app.run_polling()

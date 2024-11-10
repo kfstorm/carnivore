@@ -10,7 +10,7 @@ Carnivore is a simple tool that listens to your web page article archiving needs
 
 1. Trigger web page archiving by various methods.
     - Paste a URL to the interactive CLI.
-    - Send a URL to a Telegram channel with a Telegram bot involved.
+    - Send a URL to a Telegram bot or a Telegram channel with a Telegram bot involved.
     - (More triggering methods could be added as needed.)
 2. Archive the web page with various formats.
     - A single HTML file with all CSS/JavaScript/image/... resources included. Looks exactly like the original web page. (Thank you, [monolith](https://github.com/Y2Z/monolith)!)
@@ -49,12 +49,12 @@ There are multiple ways to use Carnivore. Here are some examples:
     args=(
         -e CARNIVORE_APPLICATION=telegram-bot
         -e CARNIVORE_TELEGRAM_TOKEN=...
-        -e CARNIVORE_TELEGRAM_CHANNEL_ID=...
+        -e CARNIVORE_TELEGRAM_CHANNEL_ID=... # optional. If you want to restrict the bot to a specific channel.
     )
     docker run --rm -it "${args[@]}" -v ./data:/app/data $(docker build . --quiet)
     ```
 
-2. Send a URL to the Telegram channel. The bot will process the URL and save the article content in Markdown format in the `data` directory.
+2. Send a URL to the Telegram bot or a channel with the Telegram bot. The bot will process the URL and save the article content in Markdown format in the `data` directory.
 
 ## Post-processing Customization
 
@@ -88,7 +88,7 @@ docker run --rm -it "${args[@]}" $(docker build . --quiet)
 
 - **applications/interactive-cli**: An interactive CLI tool that reads URLs pasted in the terminal, archives webpages using **Carnivore Lib**, and invokes a post-processing command for further processing.
 
-- **applications/telegram-bot**: A Telegram bot that listens for URLs in messages in a specific channel, archives webpages using **Carnivore Lib**, and invokes a post-processing command for further processing.
+- **applications/telegram-bot**: A Telegram bot that listens for URLs in messages sent to the bot or sent to a channel with the bot, archives webpages using **Carnivore Lib**, and invokes a post-processing command for further processing.
 
 ### Carnivore Lib
 
