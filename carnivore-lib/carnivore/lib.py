@@ -16,7 +16,7 @@ class Carnivore:
         self.progress_callback = callback
         pass
 
-    async def _get_full_html(self, url: str, html: str) -> str:
+    async def _get_embedded_html(self, url: str, html: str) -> str:
         # Call monolith to get HTML
         return await util.invoke_command(
             ["monolith", "-", "-I", "-v", "-b", url], input=html, no_stderr_warning=True
@@ -80,18 +80,18 @@ class Carnivore:
         # e.g. https://battleda.sh/blog/ea-account-takeover
         await self._report_progress("Rendering URL with browser")
         rendered_html = await self._get_rendered_html_from_url(url)
-        await self._report_progress("Getting full HTML")
-        full_html = await self._get_full_html(url, rendered_html)
         await self._report_progress("Polishing HTML")
-        polished_output = await self._get_polished_data(full_html)
+        polished_output = await self._get_polished_data(rendered_html)
         polished_html = polished_output["html"]
         metadata = polished_output["metadata"]
+        await self._report_progress("Embedding resources")
+        embedded_html = await self._get_embedded_html(url, polished_html)
 
         # Convert HTML to Markdown using pandoc
         markdown = None
         for html_type, html in [
+            ("embedded HTML", embedded_html),
             ("polished HTML", polished_html),
-            ("full HTML", full_html),
             ("rendered HTML", rendered_html),
         ]:
             if html:
@@ -116,12 +116,8 @@ class Carnivore:
             },
             "content": {},
         }
-        if full_html:
-            result["content"]["full_html"] = full_html
-        if rendered_html:
-            result["content"]["rendered_html"] = rendered_html
-        if polished_html:
-            result["content"]["html"] = polished_html
+        if embedded_html:
+            result["content"]["html"] = embedded_html
         if markdown:
             result["content"]["markdown"] = markdown
         return result
