@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from typing import List
 from . import util
 from .cache import cached
 import os
@@ -8,7 +9,8 @@ from playwright.async_api import async_playwright
 
 
 class Carnivore:
-    def __init__(self):
+    def __init__(self, formats: List[str]):
+        self.formats = formats
         self.progress_callback = None
         self.cache_store = {}
 
@@ -134,10 +136,6 @@ class Carnivore:
             return markdown
 
         metadata = await _get_metadata()
-        html_format = await _get_html_format()
-        full_html_format = await _get_full_html_format()
-        markdown_format = await _get_markdown_format()
-
         result = {
             "metadata": {
                 **metadata,
@@ -145,10 +143,17 @@ class Carnivore:
             },
             "content": {},
         }
-        if html_format:
-            result["content"]["html"] = html_format
-        if full_html_format:
-            result["content"]["full_html"] = full_html_format
-        if markdown_format:
-            result["content"]["markdown"] = markdown_format
+
+        format_to_func = {
+            "html": _get_html_format,
+            "full_html": _get_full_html_format,
+            "markdown": _get_markdown_format,
+        }
+        for format in self.formats:
+            if format in format_to_func:
+                format_content = await format_to_func[format]()
+                if format_content:
+                    result["content"][format] = format_content
+            else:
+                raise ValueError(f"Unsupported format: {format}")
         return result

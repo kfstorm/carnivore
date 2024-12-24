@@ -12,6 +12,10 @@ if [[ -z ${CARNIVORE_APPLICATION:-} ]]; then
   CARNIVORE_APPLICATION="interactive-cli"
 fi
 
+if [[ -z ${CARNIVORE_OUTPUT_FORMATS:-} ]]; then
+  export CARNIVORE_OUTPUT_FORMATS="markdown"
+fi
+
 application_script="applications/${CARNIVORE_APPLICATION}/main.py"
 
 if [[ ! -e ${application_script} ]]; then
@@ -22,6 +26,7 @@ fi
 
 args=(
   --post-process-command "${CARNIVORE_POST_PROCESS_COMMAND}"
+  --output-formats "${CARNIVORE_OUTPUT_FORMATS}"
 )
 
 if [[ ${CARNIVORE_APPLICATION} == "telegram-bot" ]]; then

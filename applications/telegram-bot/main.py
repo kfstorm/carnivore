@@ -39,7 +39,7 @@ async def handle_message(update: Update, context) -> None:
             await append_text(f"Processing URL: {url}")
             try:
                 # Call Carnivore
-                c = carnivore.Carnivore()
+                c = carnivore.Carnivore(args.output_formats)
                 c.set_progress_callback(append_text)
                 carnivore_output = await c.archive(url)
                 await append_text("Post-processing output")
@@ -57,6 +57,10 @@ async def handle_message(update: Update, context) -> None:
 
 
 if __name__ == "__main__":
+
+    def comma_separated_list(value):
+        return value.split(",")
+
     # Set up argument parsing
     parser = argparse.ArgumentParser(description="Telegram Bot")
     parser.add_argument("--token", required=True, help="Telegram bot token")
@@ -65,6 +69,12 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--post-process-command", required=True, type=str, help="Post process command"
+    )
+    parser.add_argument(
+        "--output-formats",
+        required=True,
+        type=comma_separated_list,
+        help="Output formats separated by commas",
     )
     args = parser.parse_args()
 
