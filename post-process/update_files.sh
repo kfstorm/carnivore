@@ -13,6 +13,6 @@ if jq -e ".files.markdown" "${metadata_file}" > /dev/null; then
   "$(dirname "$0")/atomic/add_frontmatter.sh" "${markdown_file_path}" "${metadata_file}"
 fi
 
-jq -r '.files.[]' "${metadata_file}"
+jq -r '.files[]' "${metadata_file}"
 
 rm -f "${metadata_file}"
