@@ -183,6 +183,7 @@ class Carnivore:
             if format in format_to_func:
                 format_content = await format_to_func[format]()
                 if format_content:
+                    os.makedirs(self.output_dir, exist_ok=True)
                     output_file_path = os.path.join(
                         self.output_dir,
                         f"{file_name}.{format_to_suffix[format]}",
