@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from . import util
+from .cache import cached
 import os
 import json
 from playwright.async_api import async_playwright
@@ -9,19 +10,23 @@ from playwright.async_api import async_playwright
 class Carnivore:
     def __init__(self):
         self.progress_callback = None
-        pass
+        self.cache_store = {}
 
     def set_progress_callback(self, callback):
         # Set a callback function to report progress
         self.progress_callback = callback
         pass
 
+    @cached()
     async def _get_embedded_html(self, url: str, html: str) -> str:
         # Call monolith to get HTML
         return await util.invoke_command(
-            ["monolith", "-", "-I", "-v", "-b", url], input=html, no_stderr_warning=True
+            ["monolith", "-", "-I", "-v", "-b", url],
+            input=html,
+            no_stderr_warning=True,
         )
 
+    @cached()
     async def _get_rendered_html_from_url(self, url: str) -> str:
         # Use Playwright and a headless browser to get rendered HTML
         async with async_playwright() as p:
@@ -41,10 +46,13 @@ class Carnivore:
                     ),
                 )
                 await page.goto(url)
-                return await page.content()
+                content = await page.content()
+                await browser.close()
+                return content
             finally:
                 await browser.close()
 
+    @cached()
     async def _get_polished_data(self, html: str):
         # Call readability to get polished HTML and metadata
         output = await util.invoke_command(
@@ -56,6 +64,7 @@ class Carnivore:
         )
         return json.loads(output)
 
+    @cached()
     async def _get_markdown(self, html: str):
         # Convert HTML to Markdown using pandoc
         return await util.invoke_command(
