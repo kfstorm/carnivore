@@ -5,7 +5,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 if [[ -z ${CARNIVORE_POST_PROCESS_COMMAND:-} ]]; then
-  CARNIVORE_POST_PROCESS_COMMAND="post-process/save_files.sh"
+  CARNIVORE_POST_PROCESS_COMMAND="post-process/update_files.sh"
 fi
 
 if [[ -z ${CARNIVORE_APPLICATION:-} ]]; then
@@ -14,6 +14,10 @@ fi
 
 if [[ -z ${CARNIVORE_OUTPUT_FORMATS:-} ]]; then
   export CARNIVORE_OUTPUT_FORMATS="markdown"
+fi
+
+if [[ -z ${CARNIVORE_OUTPUT_DIR:-} ]]; then
+  export CARNIVORE_OUTPUT_DIR="data"
 fi
 
 application_script="applications/${CARNIVORE_APPLICATION}/main.py"
@@ -27,6 +31,7 @@ fi
 args=(
   --post-process-command "${CARNIVORE_POST_PROCESS_COMMAND}"
   --output-formats "${CARNIVORE_OUTPUT_FORMATS}"
+  --output-dir "${CARNIVORE_OUTPUT_DIR}"
 )
 
 if [[ ${CARNIVORE_APPLICATION} == "telegram-bot" ]]; then

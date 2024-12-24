@@ -16,9 +16,9 @@ Carnivore is a simple tool that listens to your web page article archiving needs
     - A single HTML file with all CSS/JavaScript/image/... resources included. Looks exactly like the original web page. (Thank you, [monolith](https://github.com/Y2Z/monolith)!)
     - A polished version of the above HTML file that removes clutter and only keeps the article content. (Thank you, [readability](https://github.com/mozilla/readability)!)
     - A Markdown version of the polished web page. (Thank you, [pandoc](https://github.com/jgm/pandoc)!)
-    - (More formats like PDF and whole page image could be added as needed.)
-3. Process the archived files the way you like.
-    - Save files to a local path.
+    - A PDF document of the original web page. (Thank you, [weasyprint](https://github.com/Kozea/WeasyPrint)!)
+    - (More formats like whole page image could be added as needed.)
+3. Process the generated files the way you like.
     - Upload files to a GitHub repo.
     - Call a customized post-processing script written by yourself.
     - (More post-processing methods could be added as needed.)
@@ -28,6 +28,7 @@ Supported output formats:
 - `markdown`: The article content in Markdown format.
 - `html`: The article content in HTML format.
 - `full_html`: The full web page in HTML format.
+- `pdf`: The full web page in PDF format.
 
 Output formats could be customized by setting the `CARNIVORE_OUTPUT_FORMATS` environment variable. e.g. `markdown,html,full_html` (split by `,`). Default: `markdown`.
 
@@ -45,7 +46,7 @@ There are multiple ways to use Carnivore. Here are some examples:
     docker run --rm -it -v ./data:/app/data $(docker build . --quiet)
     ```
 
-2. Paste a URL to the interactive CLI. The bot will process the URL and save the article content in Markdown format in the `data` directory.
+2. Paste a URL to the interactive CLI. The bot will process the URL and save the web page in Markdown format in the `data` directory.
 
 ### Run Carnivore as a Telegram bot
 
@@ -62,7 +63,7 @@ There are multiple ways to use Carnivore. Here are some examples:
     docker run --rm -it "${args[@]}" -v ./data:/app/data $(docker build . --quiet)
     ```
 
-2. Send a URL to the Telegram bot or a channel with the Telegram bot. The bot will process the URL and save the article content in Markdown format in the `data` directory.
+2. Send a URL to the Telegram bot or a channel with the Telegram bot. The bot will process the URL and save the web page in Markdown format in the `data` directory.
 
 ## Post-processing Customization
 
@@ -73,7 +74,7 @@ You can customize the post-processing by:
 
 To configure the post-processing command, set the `CARNIVORE_POST_PROCESS_COMMAND` environment variable. The command should be a shell command.
 
-e.g. To use the pre-defined post-processing command to upload the clipped Markdown and HTML files to a GitHub repository:
+e.g. To use the pre-defined post-processing command to upload the generated files to a GitHub repository:
 
 ```bash
 args=(
@@ -82,7 +83,7 @@ args=(
     -e CARNIVORE_GITHUB_BRANCH=master # optional.
     -e CARNIVORE_GITHUB_REPO_DIR=path/in/repo
     -e CARNIVORE_GITHUB_TOKEN=...
-    -e CARNIVORE_OUTPUT_FORMATS="markdown,html,full_html" # optional. upload multiple formats of the web page.
+    -e CARNIVORE_OUTPUT_FORMATS="markdown,html,full_html,pdf" # optional. upload multiple formats of the web page.
     -e CARNIVORE_MARKDOWN_FRONTMATTER_KEY_MAPPING="url:url,title:title" # optional. you may want to add frontmatter at the beginning of the Markdown file.
     -e CARNIVORE_MARKDOWN_FRONTMATTER_ADDITIONAL_ARGS="--timestamp-key date-created" # optional. you may want to add the timestamp to the frontmatter.
     -e TZ=Asia/Shanghai # optional. you may want to customize the timezone.
@@ -105,8 +106,9 @@ docker run --rm -it "${args[@]}" $(docker build . --quiet)
   - [monolith](https://github.com/Y2Z/monolith): Save a web page as a single HTML with all resources embedded. The saved HTML page looks exactly like the online version.
   - [readability](https://github.com/mozilla/readability): Extract the article content from a web page.
   - [pandoc](https://github.com/jgm/pandoc): Convert between various formats, including HTML and Markdown.
+  - [weasyprint](https://github.com/Kozea/WeasyPrint): Convert HTML to PDF.
 
 ### Post-process Scripts
 
-- [post-process/save_files.sh](process/save_files.sh): A script that saves the processed content to any directory (customizable via the `CARNIVORE_OUTPUT_DIR` environment variable).
-- [post-process/upload_to_github.sh](post-process/upload_to_github.sh): A script that uploads the processed content to a GitHub repository.
+- [post-process/update_files.sh](process/update_files.sh): A script that updates the content of the generated files (mainly used to add frontmatter to the generated Markdown file).
+- [post-process/upload_to_github.sh](post-process/upload_to_github.sh): A script that uploads the generated files to a GitHub repository.

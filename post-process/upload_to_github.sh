@@ -19,8 +19,8 @@ if [[ -z ${CARNIVORE_GITHUB_REPO_DIR:-} ]]; then
   exit 1
 fi
 
-# Get the file paths from save_files.sh
-file_paths=$("${BASE_DIR}/atomic/save_files.sh")
+# Get the file paths from update_files.sh
+file_paths=$("${BASE_DIR}/update_files.sh")
 
 OPTIONAL_ARGS=()
 if [ -n "${CARNIVORE_GITHUB_BRANCH:-}" ]; then

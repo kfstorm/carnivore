@@ -39,7 +39,7 @@ async def handle_message(update: Update, context) -> None:
             await append_text(f"Processing URL: {url}")
             try:
                 # Call Carnivore
-                c = carnivore.Carnivore(args.output_formats)
+                c = carnivore.Carnivore(args.output_formats, args.output_dir)
                 c.set_progress_callback(append_text)
                 carnivore_output = await c.archive(url)
                 await append_text("Post-processing output")
@@ -75,6 +75,12 @@ if __name__ == "__main__":
         required=True,
         type=comma_separated_list,
         help="Output formats separated by commas",
+    )
+    parser.add_argument(
+        "--output-dir",
+        required=True,
+        type=str,
+        help="Output directory for the processed files",
     )
     args = parser.parse_args()
 

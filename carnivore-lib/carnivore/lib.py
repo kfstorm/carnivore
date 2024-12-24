@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 from typing import List
 from . import util
 from .cache import cached
@@ -9,8 +10,9 @@ from playwright.async_api import async_playwright
 
 
 class Carnivore:
-    def __init__(self, formats: List[str]):
+    def __init__(self, formats: List[str], output_dir: str):
         self.formats = formats
+        self.output_dir = output_dir
         self.progress_callback = None
         self.cache_store = {}
 
@@ -85,9 +87,25 @@ class Carnivore:
             html,
         )
 
+    @cached()
+    async def _get_pdf_from_html(self, html: str) -> bytes:
+        await self._report_progress("Converting HTML to PDF")
+        # Convert HTML to PDF using weasyprint
+        return await util.invoke_command(
+            ["weasyprint", "-", "-"], input=html, return_bytes=True
+        )
+
     async def _report_progress(self, message: str):
         if self.progress_callback:
             await self.progress_callback(message)
+
+    def _sanitize_file_name(self, file_name: str) -> str:
+        base_file_name = re.sub(r'[<>:"/\\|?*]', "-", file_name)
+        base_file_name = re.sub(r"\s+", " ", base_file_name)
+        base_file_name = base_file_name.strip()
+        if not base_file_name:
+            base_file_name = "untitled"
+        return base_file_name
 
     async def archive(self, url: str):
         async def _get_metadata():
@@ -135,25 +153,52 @@ class Carnivore:
                 raise Exception("Failed to convert HTML to Markdown")
             return markdown
 
+        async def _get_pdf_format():
+            full_html = await _get_full_html_format()
+            return await self._get_pdf_from_html(full_html)
+
         metadata = await _get_metadata()
         result = {
             "metadata": {
                 **metadata,
                 "url": url,
             },
-            "content": {},
+            "files": {},
         }
 
         format_to_func = {
             "html": _get_html_format,
             "full_html": _get_full_html_format,
             "markdown": _get_markdown_format,
+            "pdf": _get_pdf_format,
         }
+        format_to_suffix = {
+            "html": "html",
+            "full_html": "full.html",
+            "markdown": "md",
+            "pdf": "pdf",
+        }
+        file_name = self._sanitize_file_name(metadata["title"])
         for format in self.formats:
             if format in format_to_func:
                 format_content = await format_to_func[format]()
                 if format_content:
-                    result["content"][format] = format_content
+                    output_file_path = os.path.join(
+                        self.output_dir,
+                        f"{file_name}.{format_to_suffix[format]}",
+                    )
+                    if isinstance(format_content, str):
+                        with open(output_file_path, "w") as f:
+                            f.write(format_content)
+                    elif isinstance(format_content, bytes):
+                        with open(output_file_path, "wb") as f:
+                            f.write(format_content)
+                    else:
+                        raise ValueError(
+                            "Unsupported format content data type:"
+                            f" {type(format_content)}"
+                        )
+                    result["files"][format] = output_file_path
             else:
                 raise ValueError(f"Unsupported format: {format}")
         return result

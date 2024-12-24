@@ -21,6 +21,12 @@ async def main():
         type=comma_separated_list,
         help="Output formats separated by commas",
     )
+    parser.add_argument(
+        "--output-dir",
+        required=True,
+        type=str,
+        help="Output directory for the processed files",
+    )
     args = parser.parse_args()
 
     async def append_text(message: str):
@@ -31,7 +37,7 @@ async def main():
         url = url.strip()
         print("Processing URL...")
         try:
-            c = carnivore.Carnivore(args.output_formats)
+            c = carnivore.Carnivore(args.output_formats, args.output_dir)
             c.set_progress_callback(append_text)
             carnivore_output = await c.archive(url)
             output = await util.post_process(

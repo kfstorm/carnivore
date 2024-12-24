@@ -17,6 +17,7 @@ async def invoke_command(
     command: list[str],
     input: str = None,
     no_stderr_warning: bool = False,
+    return_bytes: bool = False,
     **kwargs,
 ) -> str:
     # Invoke a command and return the output
@@ -29,22 +30,24 @@ async def invoke_command(
     )
     atexit.register(kill_child, process)
     stdout, stderr = await process.communicate(input=input.encode() if input else None)
+    stderr = stderr.decode().strip()
+    if not return_bytes:
+        stdout = stdout.decode().strip()
     if process.returncode != 0:
         message = (
             f"Subprocess of command {command} failed"
             f" with exit code {process.returncode}."
         )
         if stderr:
-            message += f" stderr: {stderr.decode().strip()}"
+            message += f" stderr: {stderr}"
         if stdout:
-            message += f" stdout: {stdout.decode().strip()}"
+            message += f" stdout: {stdout}"
         raise Exception(message)
     if not no_stderr_warning and stderr:
         logging.warning(
-            f"Subprocess of command {command} succeeded"
-            f" with stderr: {stderr.decode().strip()}"
+            f"Subprocess of command {command} succeeded" f" with stderr: {stderr}"
         )
-    return stdout.decode().strip()
+    return stdout
 
 
 async def post_process(carnivore_output: dict, post_process_command: str) -> dict:
