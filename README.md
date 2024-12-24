@@ -23,6 +23,14 @@ Carnivore is a simple tool that listens to your web page article archiving needs
     - Call a customized post-processing script written by yourself.
     - (More post-processing methods could be added as needed.)
 
+Supported output formats:
+
+- `markdown`: The article content in Markdown format.
+- `html`: The article content in HTML format.
+- `full_html`: The full web page in HTML format.
+
+Output formats could be customized by setting the `CARNIVORE_OUTPUT_FORMATS` environment variable. e.g. `markdown,html,full_html` (split by `,`). Default: `markdown`.
+
 ## Usage
 
 There are multiple ways to use Carnivore. Here are some examples:
@@ -74,7 +82,7 @@ args=(
     -e CARNIVORE_GITHUB_BRANCH=master # optional.
     -e CARNIVORE_GITHUB_REPO_DIR=path/in/repo
     -e CARNIVORE_GITHUB_TOKEN=...
-    -e CARNIVORE_OUTPUT_FORMATS="markdown,html" # optional. upload multiple formats of the web page. Default: markdown.
+    -e CARNIVORE_OUTPUT_FORMATS="markdown,html,full_html" # optional. upload multiple formats of the web page.
     -e CARNIVORE_MARKDOWN_FRONTMATTER_KEY_MAPPING="url:url,title:title" # optional. you may want to add frontmatter at the beginning of the Markdown file.
     -e CARNIVORE_MARKDOWN_FRONTMATTER_ADDITIONAL_ARGS="--timestamp-key date-created" # optional. you may want to add the timestamp to the frontmatter.
     -e TZ=Asia/Shanghai # optional. you may want to customize the timezone.
@@ -92,7 +100,7 @@ docker run --rm -it "${args[@]}" $(docker build . --quiet)
 
 ### Carnivore Lib
 
-- **carnivore-lib/**: The main code for web page archiving purposes. It converts web pages to various formats, currently HTML and Markdown.
+- **carnivore-lib/**: The main code for web page archiving purposes. It converts web pages to various formats.
 - Tools used:
   - [monolith](https://github.com/Y2Z/monolith): Save a web page as a single HTML with all resources embedded. The saved HTML page looks exactly like the online version.
   - [readability](https://github.com/mozilla/readability): Extract the article content from a web page.

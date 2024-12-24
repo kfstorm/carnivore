@@ -18,8 +18,8 @@ class Carnivore:
         pass
 
     @cached()
-    async def _get_embedded_html(self, url: str, html: str) -> str:
-        await self._report_progress("Embedding resources")
+    async def _get_embedded_html(self, url: str, html: str, html_type: str) -> str:
+        await self._report_progress(f"Embedding resources of {html_type}")
         # Call monolith to get HTML
         return await util.invoke_command(
             ["monolith", "-", "-I", "-v", "-b", url],
@@ -100,14 +100,19 @@ class Carnivore:
             rendered_html = await self._get_rendered_html_from_url(url)
             polished_output = await self._get_polished_data(rendered_html)
             polished_html = polished_output["html"]
-            embedded_html = await self._get_embedded_html(url, polished_html)
-            return embedded_html
+            return await self._get_embedded_html(url, polished_html, "polished HTML")
+
+        async def _get_full_html_format():
+            rendered_html = await self._get_rendered_html_from_url(url)
+            return await self._get_embedded_html(url, rendered_html, "rendered HTML")
 
         async def _get_markdown_format():
             rendered_html = await self._get_rendered_html_from_url(url)
             polished_output = await self._get_polished_data(rendered_html)
             polished_html = polished_output["html"]
-            embedded_html = await self._get_embedded_html(url, polished_html)
+            embedded_html = await self._get_embedded_html(
+                url, polished_html, "polished HTML"
+            )
             # Convert HTML to Markdown using pandoc
             markdown = None
             for html_type, html in [
@@ -130,6 +135,7 @@ class Carnivore:
 
         metadata = await _get_metadata()
         html_format = await _get_html_format()
+        full_html_format = await _get_full_html_format()
         markdown_format = await _get_markdown_format()
 
         result = {
@@ -141,6 +147,8 @@ class Carnivore:
         }
         if html_format:
             result["content"]["html"] = html_format
+        if full_html_format:
+            result["content"]["full_html"] = full_html_format
         if markdown_format:
             result["content"]["markdown"] = markdown_format
         return result

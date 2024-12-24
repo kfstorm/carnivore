@@ -5,7 +5,7 @@ set -euo pipefail
 # This script takes the output of carnivore and choose one or more content formats to save to temp files.
 #
 # Environment variables:
-# CARNIVORE_OUTPUT_FORMATS (optional). Options: "markdown", "html". You can provide multiple formats separated by comma. Default: "markdown"
+# CARNIVORE_OUTPUT_FORMATS (optional). Options: "markdown", "html", "full_html". You can provide multiple formats separated by comma. Default: "markdown"
 #
 # Output:
 # The path to the saved file
@@ -43,6 +43,9 @@ for carnivore_output_format in "${CARNIVORE_OUTPUT_FORMATS[@]}"; do
     ;;
   "html")
     file_name="${base_file_name}.html"
+    ;;
+  "full_html")
+    file_name="${base_file_name}.full.html"
     ;;
   *)
     echo "Invalid output format: ${carnivore_output_format}"
