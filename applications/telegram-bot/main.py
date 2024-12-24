@@ -17,6 +17,12 @@ logger = logging.getLogger(__name__)
 url_pattern = re.compile(r"https?://\S+")
 
 
+def cut_string(s: str, length: int) -> str:
+    if len(s) > length:
+        return "..." + s[-length:]
+    return s
+
+
 # Define the message handler
 async def handle_message(update: Update, context) -> None:
     text = update.message.text
@@ -48,7 +54,9 @@ async def handle_message(update: Update, context) -> None:
                 )
             except Exception as e:
                 logging.exception(f"Failed to process URL: {url}")
-                output = f"Failed to process URL: {url}\nError: {str(e)}"
+                output = (
+                    f"Failed to process URL: {url}\nError: {cut_string(str(e), 1024)}"
+                )
 
             messages.append("")
             await append_text(output)
