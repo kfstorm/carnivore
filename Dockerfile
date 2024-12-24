@@ -17,7 +17,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     nodejs npm \
     jq \
     curl \
-    weasyprint \
     && rm -rf /var/lib/apt/lists/*
 ARG PANDOC_VERSION=3.5
 RUN curl -fsSL "https://github.com/jgm/pandoc/releases/download/${PANDOC_VERSION}/pandoc-${PANDOC_VERSION}-linux-$(dpkg --print-architecture).tar.gz" -o pandoc.tar.gz && \
@@ -31,8 +30,8 @@ WORKDIR /app
 COPY carnivore-lib/carnivore/readability/package*.json carnivore-lib/carnivore/readability/
 RUN cd carnivore-lib/carnivore/readability && npm install && npm cache clean --force
 
-# Install Playwright and Firefox. (This is to avoid re-build this layer if carnivore-lib code has changed.)
-RUN pip install playwright==1.48.0 && playwright install --with-deps firefox
+# Install Playwright and Chromium. (This is to avoid re-build this layer if carnivore-lib code has changed.)
+RUN pip install playwright==1.48.0 && playwright install --with-deps chromium
 
 # Install Python packages
 COPY applications/telegram-bot/requirements.txt applications/telegram-bot/

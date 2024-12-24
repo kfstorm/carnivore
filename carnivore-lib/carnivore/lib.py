@@ -6,6 +6,7 @@ from . import util
 from .cache import cached
 import os
 import json
+import tempfile
 from playwright.async_api import async_playwright
 
 
@@ -36,7 +37,7 @@ class Carnivore:
         await self._report_progress("Rendering URL with browser")
         # Use Playwright and a headless browser to get rendered HTML
         async with async_playwright() as p:
-            browser = await p.firefox.launch(headless=True)
+            browser = await p.chromium.launch(headless=True)
             try:
                 page = await browser.new_page()
                 # Intercept network requests to block resources such as images.
@@ -52,9 +53,7 @@ class Carnivore:
                     ),
                 )
                 await page.goto(url)
-                content = await page.content()
-                await browser.close()
-                return content
+                return await page.content()
             finally:
                 await browser.close()
 
@@ -90,10 +89,19 @@ class Carnivore:
     @cached()
     async def _get_pdf_from_html(self, html: str) -> bytes:
         await self._report_progress("Converting HTML to PDF")
-        # Convert HTML to PDF using weasyprint
-        return await util.invoke_command(
-            ["weasyprint", "-", "-"], input=html, return_bytes=True
-        )
+        with tempfile.NamedTemporaryFile(suffix=".html", mode="w") as temp_file:
+            temp_file.write(html)
+
+            # Use Playwright and a headless browser to get PDF
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(headless=True)
+                try:
+                    page = await browser.new_page()
+                    await page.emulate_media(media="print")
+                    await page.goto("file://" + temp_file.name)
+                    return await page.pdf()
+                finally:
+                    await browser.close()
 
     async def _report_progress(self, message: str):
         if self.progress_callback:
@@ -181,25 +189,39 @@ class Carnivore:
         file_name = self._sanitize_file_name(metadata["title"])
         for format in self.formats:
             if format in format_to_func:
-                format_content = await format_to_func[format]()
-                if format_content:
-                    os.makedirs(self.output_dir, exist_ok=True)
-                    output_file_path = os.path.join(
-                        self.output_dir,
-                        f"{file_name}.{format_to_suffix[format]}",
-                    )
-                    if isinstance(format_content, str):
-                        with open(output_file_path, "w") as f:
-                            f.write(format_content)
-                    elif isinstance(format_content, bytes):
-                        with open(output_file_path, "wb") as f:
-                            f.write(format_content)
+                try:
+                    format_content = await format_to_func[format]()
+                except Exception as e:
+                    if hasattr(e, "message"):
+                        message = e.message
                     else:
-                        raise ValueError(
-                            "Unsupported format content data type:"
-                            f" {type(format_content)}"
-                        )
-                    result["files"][format] = output_file_path
+                        message = str(e)
+                    await self._report_progress(
+                        f"Failed to get {format} format: {message}"
+                    )
+                    continue
+                if not format_content:
+                    await self._report_progress(
+                        f"Failed to get {format} format: content is empty"
+                    )
+                    continue
+                os.makedirs(self.output_dir, exist_ok=True)
+                output_file_path = os.path.join(
+                    self.output_dir,
+                    f"{file_name}.{format_to_suffix[format]}",
+                )
+                if isinstance(format_content, str):
+                    with open(output_file_path, "w") as f:
+                        f.write(format_content)
+                elif isinstance(format_content, bytes):
+                    with open(output_file_path, "wb") as f:
+                        f.write(format_content)
+                else:
+                    raise ValueError(
+                        "Unsupported format content data type:"
+                        f" {type(format_content)}"
+                    )
+                result["files"][format] = output_file_path
             else:
                 raise ValueError(f"Unsupported format: {format}")
         return result

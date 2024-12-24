@@ -13,10 +13,10 @@ Carnivore is a simple tool that listens to your web page article archiving needs
     - Send a URL to a Telegram bot or a Telegram channel with a Telegram bot involved.
     - (More triggering methods could be added as needed.)
 2. Archive the web page with various formats.
-    - A single HTML file with all CSS/JavaScript/image/... resources included. Looks exactly like the original web page. (Thank you, [monolith](https://github.com/Y2Z/monolith)!)
-    - A polished version of the above HTML file that removes clutter and only keeps the article content. (Thank you, [readability](https://github.com/mozilla/readability)!)
-    - A Markdown version of the polished web page. (Thank you, [pandoc](https://github.com/jgm/pandoc)!)
-    - A PDF document of the original web page. (Thank you, [weasyprint](https://github.com/Kozea/WeasyPrint)!)
+    - A single HTML file with all CSS/JavaScript/image/... resources included. Looks exactly like the original web page.
+    - A polished version of the above HTML file that removes clutter and only keeps the article content.
+    - A Markdown version of the polished web page.
+    - A PDF document of the original web page.
     - (More formats like whole page image could be added as needed.)
 3. Process the generated files the way you like.
     - Upload files to a GitHub repo.
@@ -106,7 +106,6 @@ docker run --rm -it "${args[@]}" $(docker build . --quiet)
   - [monolith](https://github.com/Y2Z/monolith): Save a web page as a single HTML with all resources embedded. The saved HTML page looks exactly like the online version.
   - [readability](https://github.com/mozilla/readability): Extract the article content from a web page.
   - [pandoc](https://github.com/jgm/pandoc): Convert between various formats, including HTML and Markdown.
-  - [weasyprint](https://github.com/Kozea/WeasyPrint): Convert HTML to PDF.
 
 ### Post-process Scripts
 
