@@ -12,6 +12,7 @@ import tempfile
 import aiohttp
 from playwright.async_api import async_playwright
 from playwright_stealth import stealth_async
+from bs4 import BeautifulSoup
 
 
 class Carnivore:
@@ -177,6 +178,13 @@ class Carnivore:
     @cached()
     async def _get_pdf_from_html(self, html: str) -> bytes:
         await self._report_progress("Converting HTML to PDF")
+
+        # Remove loading="lazy" attributes from all img tags
+        soup = BeautifulSoup(html, "html.parser")
+        for img in soup.find_all("img", loading="lazy"):
+            del img["loading"]
+        html = str(soup)
+
         with tempfile.NamedTemporaryFile(suffix=".html", mode="w") as temp_file:
             temp_file.write(html)
 
