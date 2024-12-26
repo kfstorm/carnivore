@@ -9,3 +9,5 @@ echo "Running shell scripts format..."
 
 echo "Running Python scripts format..."
 "${BASE_DIR}/format-python.sh" "$@"
+
+echo "Checking readme..."

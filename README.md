@@ -91,6 +91,35 @@ args=(
 docker run --rm -it "${args[@]}" $(docker build . --quiet)
 ```
 
+## Arguments
+
+Common arguments:
+
+- `CARNIVORE_APPLICATION`: Optional. The application to run. Default: `interactive-cli`.
+- `CARNIVORE_OUTPUT_DIR`: Optional. The directory to save the generated files. Default: `data`.
+- `CARNIVORE_OUTPUT_FORMATS`: Optional. The output formats to generate. Default: `markdown`. Split by `,`.
+- `CARNIVORE_POST_PROCESS_COMMAND`: Optional. The post-processing command to run. Default: `post-process/update_files.sh`.
+- `CARNIVORE_MARKDOWN_FRONTMATTER_KEY_MAPPING`: Optional. The key mapping for the frontmatter in the Markdown file. The format is `metadata_key1:frontmatter_key1,metadata_key2:frontmatter_key2`. e.g.: `url:url,title:title`.
+- `CARNIVORE_MARKDOWN_FRONTMATTER_ADDITIONAL_ARGS`: Additional arguments for the frontmatter in the Markdown file. e.g. `--timestamp-key date-created --timestamp-format %Y-%m-%d %H:%M:%S`.
+
+Telegram-related arguments (only used when the application is `telegram-bot`):
+
+- `CARNIVORE_TELEGRAM_TOKEN`: The Telegram bot token.
+- `CARNIVORE_TELEGRAM_CHANNEL_ID`: Optional. The Telegram channel ID to restrict the bot to.
+
+GitHub-related arguments (only used when the post-processing command is `post-process/upload_to_github.sh`):
+
+- `CARNIVORE_GITHUB_REPO`: The GitHub repository to upload the generated files.
+- `CARNIVORE_GITHUB_BRANCH`: Optional. The branch to upload the generated files. Default: `master`.
+- `CARNIVORE_GITHUB_REPO_DIR`: The directory in the GitHub repository to upload the generated files.
+- `CARNIVORE_GITHUB_TOKEN`: The GitHub token to upload the generated files.
+
+Zenrows-related arguments (for bypassing bot detection such as Cloudflare DDOS protection):
+
+- `CARNIVORE_ZENROWS_API_KEY`: Optional. The Zenrows API key. If not set, Zenrows will not be used.
+- `CARNIVORE_ZENROWS_PREMIUM_PROXIES`: Optional. Set to `true` to enable premium proxies.
+- `CARNIVORE_ZENROWS_JS_RENDERING`: Optional. Set to `true` to enable JS rendering.
+
 ## Components
 
 ### Applications
