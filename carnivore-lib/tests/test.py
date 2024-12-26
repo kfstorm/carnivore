@@ -34,6 +34,7 @@ async def _test_common(
         file_size_check(output["files"]["markdown"], markdown_min_size)
     if pdf_min_size:
         file_size_check(output["files"]["pdf"], pdf_min_size)
+    return output
 
 
 @pytest.mark.asyncio
@@ -71,6 +72,18 @@ async def test_pdf_images_no_lazy_loading(carnivore_instance):
         markdown_min_size=MARKDOWN_MIN_SIZE_WITH_IMAGES,
         pdf_min_size=5 * 1024 * 1024,
     )
+
+
+@pytest.mark.asyncio
+async def test_user_agent(carnivore_instance):
+    output = await _test_common(
+        carnivore_instance,
+        "https://my-user-agent.com",
+    )
+    with open(output["files"]["full_html"], "r") as f:
+        html = f.read()
+    assert "Chrome/" in html
+    assert "HeadlessChrome/" not in html
 
 
 if __name__ == "__main__":

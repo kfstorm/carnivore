@@ -134,15 +134,24 @@ class Carnivore:
             ) as response:
                 return await response.text()
 
+    async def _browser_render_common(self, url: str, page_handler):
+        async with async_playwright() as p:
+            browser = await p.chromium.launch()
+            async with await browser.new_context() as context:
+                async with await context.new_page() as page:
+                    user_agent = await page.evaluate("() => navigator.userAgent")
+            user_agent = user_agent.replace("Headless", "")
+            async with await browser.new_context(user_agent=user_agent) as context:
+                async with await context.new_page() as page:
+                    await stealth_async(page)
+                    return await page_handler(page, url)
+
     @cached()
     async def _get_rendered_html_from_url(self, url: str) -> str:
         await self._report_progress("Rendering URL with browser")
+
         # Use Playwright and a headless browser to get rendered HTML
-        async with async_playwright() as p:
-            browser = await p.chromium.launch()
-            context = await browser.new_context()
-            page = await context.new_page()
-            await stealth_async(page)
+        async def page_handler(page, url):
             # Intercept network requests to block resources such as images.
             # Since we use monolith to localize all resources,
             # there's no need to load some resources during rendering stage,
@@ -169,6 +178,8 @@ class Carnivore:
             if self._is_blocked(html) and self.zenrows_api_key:
                 html = await self._get_rendered_html_from_zenrows(url)
             return html
+
+        return await self._browser_render_common(url, page_handler)
 
     @cached()
     async def _get_polished_data(self, html: str):
@@ -213,15 +224,14 @@ class Carnivore:
             temp_file.write(html)
 
             # Use Playwright and a headless browser to get PDF
-            async with async_playwright() as p:
-                browser = await p.chromium.launch()
-                try:
-                    page = await browser.new_page()
-                    await page.emulate_media(media="print")
-                    await page.goto("file://" + temp_file.name)
-                    return await page.pdf()
-                finally:
-                    await browser.close()
+            async def page_handler(page, url):
+                await page.emulate_media(media="print")
+                await page.goto("file://" + temp_file.name)
+                return await page.pdf()
+
+            return await self._browser_render_common(
+                "file://" + temp_file.name, page_handler
+            )
 
     async def _report_progress(self, message: str):
         if self.progress_callback:
