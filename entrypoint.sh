@@ -34,6 +34,18 @@ args=(
   --output-dir "${CARNIVORE_OUTPUT_DIR}"
 )
 
+if [[ -n ${CARNIVORE_ZENROWS_API_KEY:-} ]]; then
+  args+=(--zenrows-api-key "${CARNIVORE_ZENROWS_API_KEY}")
+fi
+
+if [[ ${CARNIVORE_ZENROWS_PREMIUM_PROXIES:-} == "true" ]]; then
+  args+=(--zenrows-premium-proxies)
+fi
+
+if [[ ${CARNIVORE_ZENROWS_JS_RENDERING:-} == "true" ]]; then
+  args+=(--zenrows-js-rendering)
+fi
+
 if [[ ${CARNIVORE_APPLICATION} == "telegram-bot" ]]; then
   if [[ -n ${CARNIVORE_TELEGRAM_TOKEN:-} ]]; then
     args+=(--token "${CARNIVORE_TELEGRAM_TOKEN}")

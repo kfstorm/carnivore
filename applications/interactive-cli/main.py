@@ -5,28 +5,14 @@ import carnivore
 from carnivore import util
 
 
-def comma_separated_list(value):
-    return value.split(",")
-
-
 async def main():
     # Set up argument parsing
     parser = argparse.ArgumentParser(description="Interactive CLI")
     parser.add_argument(
         "--post-process-command", required=True, type=str, help="Post process command"
     )
-    parser.add_argument(
-        "--output-formats",
-        required=True,
-        type=comma_separated_list,
-        help="Output formats separated by commas",
-    )
-    parser.add_argument(
-        "--output-dir",
-        required=True,
-        type=str,
-        help="Output directory for the processed files",
-    )
+    carnivore.Carnivore.setup_arg_parser(parser)
+
     args = parser.parse_args()
 
     async def append_text(message: str):
@@ -37,7 +23,7 @@ async def main():
         url = url.strip()
         print("Processing URL...")
         try:
-            c = carnivore.Carnivore(args.output_formats, args.output_dir)
+            c = carnivore.Carnivore.from_args(args)
             c.set_progress_callback(append_text)
             carnivore_output = await c.archive(url)
             output = await util.post_process(
