@@ -1,3 +1,3 @@
-from .lib import Carnivore
+from .lib import Carnivore, SUPPORTED_FORMATS
 
-__all__ = ["Carnivore"]
+__all__ = ["Carnivore", "SUPPORTED_FORMATS"]

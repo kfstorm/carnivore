@@ -15,6 +15,26 @@ from playwright_stealth import stealth_async
 from bs4 import BeautifulSoup
 
 
+SUPPORTED_FORMATS = {
+    "markdown": {
+        "file_extension": "md",
+        "processor": lambda carnivore, url: carnivore._get_markdown_format(url),
+    },
+    "html": {
+        "file_extension": "html",
+        "processor": lambda carnivore, url: carnivore._get_html_format(url),
+    },
+    "full_html": {
+        "file_extension": "full.html",
+        "processor": lambda carnivore, url: carnivore._get_full_html_format(url),
+    },
+    "pdf": {
+        "file_extension": "pdf",
+        "processor": lambda carnivore, url: carnivore._get_pdf_format(url),
+    },
+}
+
+
 class Carnivore:
     @classmethod
     def setup_arg_parser(cls, parser):
@@ -71,6 +91,9 @@ class Carnivore:
         zenrows_js_rendering: bool = False,
     ):
         self.formats = formats
+        for format in formats:
+            if format not in SUPPORTED_FORMATS:
+                raise ValueError(f"Unsupported format: {format}")
         self.output_dir = output_dir
         self.zenrows_api_key = zenrows_api_key
         self.zenrows_premium_proxies = zenrows_premium_proxies
@@ -117,7 +140,8 @@ class Carnivore:
         # Use Playwright and a headless browser to get rendered HTML
         async with async_playwright() as p:
             browser = await p.chromium.launch()
-            page = await browser.new_page()
+            context = await browser.new_context()
+            page = await context.new_page()
             await stealth_async(page)
             # Intercept network requests to block resources such as images.
             # Since we use monolith to localize all resources,
@@ -211,55 +235,55 @@ class Carnivore:
             base_file_name = "untitled"
         return base_file_name
 
+    async def _get_html_format(self, url: str):
+        # Render the URL with a browser before processing with monolith
+        # to fix parsing of web pages whose article content is loaded by JavaScript.
+        # e.g. https://battleda.sh/blog/ea-account-takeover
+        rendered_html = await self._get_rendered_html_from_url(url)
+        polished_output = await self._get_polished_data(rendered_html)
+        polished_html = polished_output["html"]
+        return await self._get_embedded_html(url, polished_html, "polished HTML")
+
+    async def _get_full_html_format(self, url: str):
+        rendered_html = await self._get_rendered_html_from_url(url)
+        return await self._get_embedded_html(url, rendered_html, "rendered HTML")
+
+    async def _get_markdown_format(self, url: str):
+        rendered_html = await self._get_rendered_html_from_url(url)
+        polished_output = await self._get_polished_data(rendered_html)
+        polished_html = polished_output["html"]
+        embedded_html = await self._get_embedded_html(
+            url, polished_html, "polished HTML"
+        )
+        # Convert HTML to Markdown using pandoc
+        markdown = None
+        for html_type, html in [
+            ("embedded HTML", embedded_html),
+            ("polished HTML", polished_html),
+            ("rendered HTML", rendered_html),
+        ]:
+            if html:
+                try:
+                    markdown = await self._get_markdown(html, html_type)
+                    if markdown:
+                        break
+                except Exception as e:
+                    logging.exception(
+                        f"Failed to convert HTML to Markdown with {html_type}", e
+                    )
+        if not markdown:
+            raise Exception("Failed to convert HTML to Markdown")
+        return markdown
+
+    async def _get_pdf_format(self, url: str):
+        full_html = await self._get_full_html_format(url)
+        return await self._get_pdf_from_html(full_html)
+
     async def archive(self, url: str):
         async def _get_metadata():
             rendered_html = await self._get_rendered_html_from_url(url)
             polished_output = await self._get_polished_data(rendered_html)
             return polished_output["metadata"]
-
-        async def _get_html_format():
-            # Render the URL with a browser before processing with monolith
-            # to fix parsing of web pages whose article content is loaded by JavaScript.
-            # e.g. https://battleda.sh/blog/ea-account-takeover
-            rendered_html = await self._get_rendered_html_from_url(url)
-            polished_output = await self._get_polished_data(rendered_html)
-            polished_html = polished_output["html"]
-            return await self._get_embedded_html(url, polished_html, "polished HTML")
-
-        async def _get_full_html_format():
-            rendered_html = await self._get_rendered_html_from_url(url)
-            return await self._get_embedded_html(url, rendered_html, "rendered HTML")
-
-        async def _get_markdown_format():
-            rendered_html = await self._get_rendered_html_from_url(url)
-            polished_output = await self._get_polished_data(rendered_html)
-            polished_html = polished_output["html"]
-            embedded_html = await self._get_embedded_html(
-                url, polished_html, "polished HTML"
-            )
-            # Convert HTML to Markdown using pandoc
-            markdown = None
-            for html_type, html in [
-                ("embedded HTML", embedded_html),
-                ("polished HTML", polished_html),
-                ("rendered HTML", rendered_html),
-            ]:
-                if html:
-                    try:
-                        markdown = await self._get_markdown(html, html_type)
-                        if markdown:
-                            break
-                    except Exception as e:
-                        logging.exception(
-                            f"Failed to convert HTML to Markdown with {html_type}", e
-                        )
-            if not markdown:
-                raise Exception("Failed to convert HTML to Markdown")
-            return markdown
-
-        async def _get_pdf_format():
-            full_html = await _get_full_html_format()
-            return await self._get_pdf_from_html(full_html)
 
         metadata = await _get_metadata()
         result = {
@@ -270,54 +294,37 @@ class Carnivore:
             "files": {},
         }
 
-        format_to_func = {
-            "html": _get_html_format,
-            "full_html": _get_full_html_format,
-            "markdown": _get_markdown_format,
-            "pdf": _get_pdf_format,
-        }
-        format_to_suffix = {
-            "html": "html",
-            "full_html": "full.html",
-            "markdown": "md",
-            "pdf": "pdf",
-        }
         file_name = self._sanitize_file_name(metadata["title"])
         for format in self.formats:
-            if format in format_to_func:
-                try:
-                    format_content = await format_to_func[format]()
-                except Exception as e:
-                    if hasattr(e, "message"):
-                        message = e.message
-                    else:
-                        message = str(e)
-                    await self._report_progress(
-                        f"Failed to get {format} format: {message}"
-                    )
-                    continue
-                if not format_content:
-                    await self._report_progress(
-                        f"Failed to get {format} format: content is empty"
-                    )
-                    continue
-                os.makedirs(self.output_dir, exist_ok=True)
-                output_file_path = os.path.join(
-                    self.output_dir,
-                    f"{file_name}.{format_to_suffix[format]}",
-                )
-                if isinstance(format_content, str):
-                    with open(output_file_path, "w") as f:
-                        f.write(format_content)
-                elif isinstance(format_content, bytes):
-                    with open(output_file_path, "wb") as f:
-                        f.write(format_content)
+            format_spec = SUPPORTED_FORMATS[format]
+            try:
+                format_content = await format_spec["processor"](self, url)
+            except Exception as e:
+                if hasattr(e, "message"):
+                    message = e.message
                 else:
-                    raise ValueError(
-                        "Unsupported format content data type:"
-                        f" {type(format_content)}"
-                    )
-                result["files"][format] = output_file_path
+                    message = str(e)
+                await self._report_progress(f"Failed to get {format} format: {message}")
+                continue
+            if not format_content:
+                await self._report_progress(
+                    f"Failed to get {format} format: content is empty"
+                )
+                continue
+            os.makedirs(self.output_dir, exist_ok=True)
+            output_file_path = os.path.join(
+                self.output_dir,
+                f"{file_name}.{format_spec['file_extension']}",
+            )
+            if isinstance(format_content, str):
+                with open(output_file_path, "w") as f:
+                    f.write(format_content)
+            elif isinstance(format_content, bytes):
+                with open(output_file_path, "wb") as f:
+                    f.write(format_content)
             else:
-                raise ValueError(f"Unsupported format: {format}")
+                raise ValueError(
+                    "Unsupported format content data type:" f" {type(format_content)}"
+                )
+            result["files"][format] = output_file_path
         return result
