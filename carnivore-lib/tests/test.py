@@ -1,7 +1,7 @@
 import pytest
 import carnivore
 
-MIN_SIZE_WITH_IMAGES = 1000  # Adjust this value as needed
+MARKDOWN_MIN_SIZE_WITH_IMAGES = 1000  # Adjust this value as needed
 
 
 @pytest.fixture(scope="module")
@@ -15,14 +15,25 @@ def carnivore_instance():
     return instance
 
 
-async def _test_common(carnivore_instance, url, markdown_min_size):
+def file_size_check(file_path, min_size):
+    with open(file_path, "r") as f:
+        size = len(f.read())
+        assert (
+            size >= min_size
+        ), f"Content of {file_path} is too small. Size: {size}, expected: >={min_size}"
+
+
+async def _test_common(
+    carnivore_instance, url, markdown_min_size=None, pdf_min_size=None
+):
     output = await carnivore_instance.archive(url)
     assert output["metadata"]["title"], "Title not found in output"
-    assert output["files"]["html"], "HTML content not found in output"
-    assert output["files"]["markdown"], "Markdown content not found in output"
-    with open(output["files"]["markdown"], "r") as f:
-        size = len(f.read())
-        assert size >= markdown_min_size, "Markdown content is too small"
+    for format in carnivore.SUPPORTED_FORMATS:
+        assert output["files"][format], f"{format} content not found in output"
+    if markdown_min_size:
+        file_size_check(output["files"]["markdown"], markdown_min_size)
+    if pdf_min_size:
+        file_size_check(output["files"]["pdf"], pdf_min_size)
 
 
 @pytest.mark.asyncio
@@ -30,7 +41,7 @@ async def test_dynamic_content_loading(carnivore_instance):
     await _test_common(
         carnivore_instance,
         "https://battleda.sh/blog/ea-account-takeover",
-        MIN_SIZE_WITH_IMAGES,
+        markdown_min_size=MARKDOWN_MIN_SIZE_WITH_IMAGES,
     )
 
 
@@ -39,19 +50,26 @@ async def test_visibility_hidden(carnivore_instance):
     await _test_common(
         carnivore_instance,
         "https://mp.weixin.qq.com/s/koaLJvsFLkfi_j3HKIi6Dw",
-        MIN_SIZE_WITH_IMAGES,
+        markdown_min_size=MARKDOWN_MIN_SIZE_WITH_IMAGES,
     )
 
 
-@pytest.mark.skip(
-    reason="This test costs too much time because a lot of large images to download"
-)
 @pytest.mark.asyncio
 async def test_no_timeout(carnivore_instance):
     await _test_common(
         carnivore_instance,
         "https://jhftss.github.io/A-New-Era-of-macOS-Sandbox-Escapes/",
-        MIN_SIZE_WITH_IMAGES,
+        markdown_min_size=MARKDOWN_MIN_SIZE_WITH_IMAGES,
+    )
+
+
+@pytest.mark.asyncio
+async def test_pdf_images_no_lazy_loading(carnivore_instance):
+    await _test_common(
+        carnivore_instance,
+        "https://www.rfleury.com/p/demystifying-debuggers-part-2-the",
+        markdown_min_size=MARKDOWN_MIN_SIZE_WITH_IMAGES,
+        pdf_min_size=5 * 1024 * 1024,
     )
 
 
