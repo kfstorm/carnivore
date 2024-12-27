@@ -77,6 +77,21 @@ class Carnivore:
             action="store_true",
             help="Enable Zenrows JS rendering",
         )
+        parser.add_argument(
+            "--oxylabs-user",
+            required=False,
+            type=str,
+            help=(
+                "Oxylabs Web scraping API username and password."
+                " Format: username:password",
+            ),
+        )
+        parser.add_argument(
+            "--oxylabs-js-rendering",
+            required=False,
+            action="store_true",
+            help="Enable Oxylabs JS rendering",
+        )
 
     @classmethod
     def from_args(cls, args):
@@ -86,6 +101,8 @@ class Carnivore:
             zenrows_api_key=args.zenrows_api_key,
             zenrows_premium_proxies=args.zenrows_premium_proxies,
             zenrows_js_rendering=args.zenrows_js_rendering,
+            oxylabs_user=args.oxylabs_user,
+            oxylabs_js_rendering=args.oxylabs_js_rendering,
         )
 
     def __init__(
@@ -95,6 +112,8 @@ class Carnivore:
         zenrows_api_key: str = None,
         zenrows_premium_proxies: bool = False,
         zenrows_js_rendering: bool = False,
+        oxylabs_user: str = None,
+        oxylabs_js_rendering: bool = False,
     ):
         self.formats = formats
         for format in formats:
@@ -104,6 +123,11 @@ class Carnivore:
         self.zenrows_api_key = zenrows_api_key
         self.zenrows_premium_proxies = zenrows_premium_proxies
         self.zenrows_js_rendering = zenrows_js_rendering
+        self.oxylabs_user = oxylabs_user
+        self.oxylabs_js_rendering = oxylabs_js_rendering
+        if zenrows_api_key and oxylabs_user:
+            raise ValueError("Only one of Zenrows and Oxylabs can be used at a time")
+
         self.progress_callback = None
         self.cache_store = {}
 
@@ -143,6 +167,22 @@ class Carnivore:
             ) as response:
                 return await response.text()
 
+    @cached()
+    async def _get_rendered_html_from_oxylabs(self, url: str) -> str:
+        await self._report_progress("Rendering URL with oxylabs")
+        auth = aiohttp.BasicAuth(*self.oxylabs_user.split(":"))
+        async with aiohttp.ClientSession(auth=auth) as session:
+            body = {
+                "source": "universal",
+                "url": url,
+            }
+            if self.oxylabs_js_rendering:
+                body["render"] = "html"
+            async with session.post(
+                "https://realtime.oxylabs.io/v1/queries", json=body
+            ) as response:
+                return (await response.json())["results"][0]["content"]
+
     async def _browser_render_common(self, url: str, page_handler):
         async with Stealth().use_async(async_playwright()) as p:
             browser = await p.chromium.launch()
@@ -179,8 +219,11 @@ class Carnivore:
                 html = await page.content()
                 if time.time() - now > max_wait_time:
                     break
-            if self._is_blocked(html) and self.zenrows_api_key:
-                html = await self._get_rendered_html_from_zenrows(url)
+            if self._is_blocked(html):
+                if self.zenrows_api_key:
+                    html = await self._get_rendered_html_from_zenrows(url)
+                elif self.oxylabs_user:
+                    html = await self._get_rendered_html_from_oxylabs(url)
             return html
 
         return await self._browser_render_common(url, page_handler)

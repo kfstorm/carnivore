@@ -46,6 +46,14 @@ if [[ ${CARNIVORE_ZENROWS_JS_RENDERING:-} == "true" ]]; then
   args+=(--zenrows-js-rendering)
 fi
 
+if [[ ${CARNIVORE_OXYLABS_USER:-} ]]; then
+  args+=(--oxylabs-user "${CARNIVORE_OXYLABS_USER}")
+fi
+
+if [[ ${CARNIVORE_OXYLABS_JS_RENDERING:-} == "true" ]]; then
+  args+=(--oxylabs-js-rendering)
+fi
+
 if [[ ${CARNIVORE_APPLICATION} == "telegram-bot" ]]; then
   if [[ -n ${CARNIVORE_TELEGRAM_TOKEN:-} ]]; then
     args+=(--token "${CARNIVORE_TELEGRAM_TOKEN}")
