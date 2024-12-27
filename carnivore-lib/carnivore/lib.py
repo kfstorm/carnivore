@@ -247,6 +247,8 @@ class Carnivore:
         base_file_name = base_file_name.strip()
         if not base_file_name:
             base_file_name = "untitled"
+        if len(base_file_name) > 128:
+            base_file_name = base_file_name[:125] + "..."
         return base_file_name
 
     async def _get_html_format(self, url: str):
