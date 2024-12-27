@@ -10,7 +10,7 @@ import os
 import json
 import tempfile
 import aiohttp
-from playwright.async_api import async_playwright
+from playwright.async_api import async_playwright, Page
 from playwright_stealth import Stealth
 from bs4 import BeautifulSoup
 
@@ -165,6 +165,7 @@ class Carnivore:
             async with session.get(
                 "https://api.zenrows.com/v1/", params=params
             ) as response:
+                response.raise_for_status()
                 return await response.text()
 
     @cached()
@@ -181,7 +182,14 @@ class Carnivore:
             async with session.post(
                 "https://realtime.oxylabs.io/v1/queries", json=body
             ) as response:
-                return (await response.json())["results"][0]["content"]
+                response.raise_for_status()
+                response_body = await response.json()
+                result = response_body["results"][0]
+                if result["status_code"] >= 400:
+                    raise Exception(
+                        f"Failed to render URL. Status code: {result['status_code']}"
+                    )
+                return result["content"]
 
     async def _browser_render_common(self, url: str, page_handler):
         async with Stealth().use_async(async_playwright()) as p:
@@ -195,7 +203,7 @@ class Carnivore:
         await self._report_progress("Rendering URL with browser")
 
         # Use Playwright and a headless browser to get rendered HTML
-        async def page_handler(page, url):
+        async def page_handler(page: Page, url: str):
             # Intercept network requests to block resources such as images.
             # Since we use monolith to localize all resources,
             # there's no need to load some resources during rendering stage,
@@ -208,7 +216,8 @@ class Carnivore:
                     else asyncio.create_task(route.continue_())
                 ),
             )
-            await page.goto(url)
+            response = await page.goto(url)
+            original_status_code = response.status
             await page.wait_for_load_state("networkidle")
             html = await page.content()
             max_wait_time = 10
@@ -221,9 +230,12 @@ class Carnivore:
                     break
             if self._is_blocked(html):
                 if self.zenrows_api_key:
-                    html = await self._get_rendered_html_from_zenrows(url)
+                    return await self._get_rendered_html_from_zenrows(url)
                 elif self.oxylabs_user:
-                    html = await self._get_rendered_html_from_oxylabs(url)
+                    return await self._get_rendered_html_from_oxylabs(url)
+                return html
+            elif original_status_code >= 400:
+                raise Exception(f"Failed to render URL. Status code: {response.status}")
             return html
 
         return await self._browser_render_common(url, page_handler)
