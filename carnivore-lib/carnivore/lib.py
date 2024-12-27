@@ -35,6 +35,12 @@ SUPPORTED_FORMATS = {
 }
 
 
+BLOCKED_KEYWORDS = [
+    "Just a moment...",
+    "Please complete the security check to access",
+]
+
+
 class Carnivore:
     @classmethod
     def setup_arg_parser(cls, parser):
@@ -117,7 +123,10 @@ class Carnivore:
         )
 
     def _is_blocked(self, html: str) -> bool:
-        return "Just a moment..." in html
+        for keyword in BLOCKED_KEYWORDS:
+            if keyword in html:
+                return True
+        return False
 
     @cached()
     async def _get_rendered_html_from_zenrows(self, url: str) -> str:
