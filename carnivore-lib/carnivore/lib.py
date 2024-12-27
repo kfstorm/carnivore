@@ -11,7 +11,7 @@ import json
 import tempfile
 import aiohttp
 from playwright.async_api import async_playwright
-from playwright_stealth import stealth_async
+from playwright_stealth import Stealth
 from bs4 import BeautifulSoup
 
 
@@ -135,15 +135,10 @@ class Carnivore:
                 return await response.text()
 
     async def _browser_render_common(self, url: str, page_handler):
-        async with async_playwright() as p:
+        async with Stealth().use_async(async_playwright()) as p:
             browser = await p.chromium.launch()
             async with await browser.new_context() as context:
                 async with await context.new_page() as page:
-                    user_agent = await page.evaluate("() => navigator.userAgent")
-            user_agent = user_agent.replace("Headless", "")
-            async with await browser.new_context(user_agent=user_agent) as context:
-                async with await context.new_page() as page:
-                    await stealth_async(page)
                     return await page_handler(page, url)
 
     @cached()
