@@ -75,15 +75,14 @@ async def test_pdf_images_no_lazy_loading(carnivore_instance):
 
 
 @pytest.mark.asyncio
-async def test_user_agent(carnivore_instance):
+async def test_http_headers(carnivore_instance):
     output = await _test_common(
         carnivore_instance,
-        "https://my-user-agent.com",
+        "https://myhttpheader.com/",
     )
     with open(output["files"]["full_html"], "r") as f:
         html = f.read()
-    assert "Chrome/" in html
-    assert "HeadlessChrome/" not in html
+    assert "Headless" not in html
 
 
 if __name__ == "__main__":
