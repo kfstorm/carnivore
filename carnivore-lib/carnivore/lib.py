@@ -36,8 +36,9 @@ SUPPORTED_FORMATS = {
 
 
 BLOCKED_KEYWORDS = [
-    "Just a moment...",
-    "Please complete the security check to access",
+    "Just a moment...",  # Cloudflare
+    "Please complete the security check to access",  # archive.ph
+    "We've detected unusual activity from your computer network",  # Bloomberg
 ]
 
 
