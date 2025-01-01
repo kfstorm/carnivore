@@ -34,6 +34,10 @@ args=(
   --output-dir "${CARNIVORE_OUTPUT_DIR}"
 )
 
+if [[ -n ${CARNIVORE_CHROME_EXTENSION_PATHS:-} ]]; then
+  args+=(--chrome-extension-paths "${CARNIVORE_CHROME_EXTENSION_PATHS}")
+fi
+
 if [[ -n ${CARNIVORE_ZENROWS_API_KEY:-} ]]; then
   args+=(--zenrows-api-key "${CARNIVORE_ZENROWS_API_KEY}")
 fi

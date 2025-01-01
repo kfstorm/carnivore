@@ -8,6 +8,8 @@ Carnivore is a simple tool that listens to your web page article archiving needs
 
 ## Features
 
+Main process:
+
 1. Trigger web page archiving by various methods.
     - Paste a URL to the interactive CLI.
     - Send a URL to a Telegram bot or a Telegram channel with a Telegram bot involved.
@@ -22,6 +24,11 @@ Carnivore is a simple tool that listens to your web page article archiving needs
     - Upload files to a GitHub repo.
     - Call a customized post-processing script written by yourself.
     - (More post-processing methods could be added as needed.)
+
+Other features:
+
+- Bypass bot detection by using services provided by Zenrows or OxyLabs.
+- Bypass paywalls with the help of chrome extension Bypass Paywalls Clean.
 
 Supported output formats:
 

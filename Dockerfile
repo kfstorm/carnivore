@@ -18,6 +18,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     jq \
     curl \
     git \
+    unzip \
     && rm -rf /var/lib/apt/lists/*
 ARG PANDOC_VERSION=3.5
 RUN curl -fsSL "https://github.com/jgm/pandoc/releases/download/${PANDOC_VERSION}/pandoc-${PANDOC_VERSION}-linux-$(dpkg --print-architecture).tar.gz" -o pandoc.tar.gz && \
@@ -33,6 +34,19 @@ RUN cd carnivore-lib/carnivore/readability && npm install && npm cache clean --f
 
 # Install Playwright and Chromium. (This is to avoid re-build this layer if carnivore-lib code has changed.)
 RUN pip install playwright==1.48.0 && playwright install --with-deps chromium
+
+# Install Bypass Paywalls Clean Chrome extension
+ARG BYPASS_PAYWALLS_VERSION=master
+RUN curl -fsSL https://gitflic.ru/project/magnolia1234/bpc_uploads/blob/raw?file=bypass-paywalls-chrome-clean-${BYPASS_PAYWALLS_VERSION}.zip -o /tmp/bypass-paywalls.zip && \
+    mkdir -p /tmp/bypass-paywalls && \
+    unzip /tmp/bypass-paywalls.zip -d /tmp/bypass-paywalls && \
+    top_dir=$(find /tmp/bypass-paywalls -mindepth 1 -maxdepth 1 -type d) && \
+    mv "$top_dir"/* /tmp/bypass-paywalls && \
+    rmdir "$top_dir" && \
+    mkdir -p /app/chrome-extensions && \
+    mv /tmp/bypass-paywalls /app/chrome-extensions/bypass-paywalls && \
+    rm -rf /tmp/bypass-paywalls /tmp/bypass-paywalls.zip
+ENV CARNIVORE_CHROME_EXTENSION_PATHS=/app/chrome-extensions/bypass-paywalls
 
 # Install Python packages
 COPY applications/telegram-bot/requirements.txt applications/telegram-bot/

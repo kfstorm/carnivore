@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import re
+import shutil
 import time
 from typing import List
 
@@ -42,6 +43,13 @@ BLOCKED_KEYWORDS = [
 ]
 
 
+USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"  # noqa: B950
+EXTRA_HTTP_HEADERS = {
+    "Sec-CH-UA": '"Chromium";v="131", "Not_A Brand";v="24"',
+    "Accept-Language": "en-US,en;q=0.9",
+}
+
+
 class Carnivore:
     @classmethod
     def setup_arg_parser(cls, parser):
@@ -59,6 +67,11 @@ class Carnivore:
             required=True,
             type=str,
             help="Output directory for the processed files",
+        )
+        parser.add_argument(
+            "--chrome-extension-paths",
+            type=comma_separated_list,
+            help="Paths to Chrome extensions to load",
         )
         parser.add_argument(
             "--zenrows-api-key",
@@ -99,6 +112,7 @@ class Carnivore:
         return cls(
             args.output_formats,
             args.output_dir,
+            args.chrome_extension_paths,
             zenrows_api_key=args.zenrows_api_key,
             zenrows_premium_proxies=args.zenrows_premium_proxies,
             zenrows_js_rendering=args.zenrows_js_rendering,
@@ -110,6 +124,7 @@ class Carnivore:
         self,
         formats: List[str],
         output_dir: str,
+        chrome_extension_paths: List[str] = None,
         zenrows_api_key: str = None,
         zenrows_premium_proxies: bool = False,
         zenrows_js_rendering: bool = False,
@@ -121,6 +136,7 @@ class Carnivore:
             if format not in SUPPORTED_FORMATS:
                 raise ValueError(f"Unsupported format: {format}")
         self.output_dir = output_dir
+        self.chrome_extension_paths = chrome_extension_paths
         self.zenrows_api_key = zenrows_api_key
         self.zenrows_premium_proxies = zenrows_premium_proxies
         self.zenrows_js_rendering = zenrows_js_rendering
@@ -194,8 +210,25 @@ class Carnivore:
 
     async def _browser_render_common(self, url: str, page_handler):
         async with Stealth().use_async(async_playwright()) as p:
-            browser = await p.chromium.launch()
-            async with await browser.new_context() as context:
+            chromium_args = []
+            if self.chrome_extension_paths:
+                load_extension_value = ",".join(self.chrome_extension_paths)
+                chromium_args += [
+                    "--headless=new",  # https://issues.chromium.org/issues/40894124
+                    f"-disable-extensions-except={load_extension_value}",
+                    f"--load-extension={load_extension_value}",
+                ]
+            chrome_data_dir = "/tmp/chrome-data"
+            if os.path.exists(chrome_data_dir):
+                shutil.rmtree(chrome_data_dir)
+            async with await p.chromium.launch_persistent_context(
+                chrome_data_dir,
+                channel="chromium",
+                args=chromium_args,
+                # https://github.com/Mattwmaster58/playwright_stealth/issues/9
+                user_agent=USER_AGENT,
+                extra_http_headers=EXTRA_HTTP_HEADERS,
+            ) as context:
                 async with await context.new_page() as page:
                     return await page_handler(page, url)
 
@@ -218,7 +251,7 @@ class Carnivore:
                 ),
             )
             response = await page.goto(url)
-            original_status_code = response.status
+            original_status_code = response.status if response else 0
             await page.wait_for_load_state("networkidle")
             html = await page.content()
             max_wait_time = 10
