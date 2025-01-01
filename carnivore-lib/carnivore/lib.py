@@ -40,6 +40,8 @@ BLOCKED_KEYWORDS = [
     "Just a moment...",  # Cloudflare
     "Please complete the security check to access",  # archive.ph
     "We've detected unusual activity from your computer network",  # Bloomberg
+    "DataDome Device Check",  # The Wall Street Journal
+    "DataDome CAPTCHA",  # The Wall Street Journal
 ]
 
 
@@ -264,12 +266,13 @@ class Carnivore:
                     break
             if self._is_blocked(html):
                 if self.zenrows_api_key:
-                    return await self._get_rendered_html_from_zenrows(url)
+                    html = await self._get_rendered_html_from_zenrows(url)
                 elif self.oxylabs_user:
-                    return await self._get_rendered_html_from_oxylabs(url)
-                return html
+                    html = await self._get_rendered_html_from_oxylabs(url)
             elif original_status_code >= 400:
                 raise Exception(f"Failed to render URL. Status code: {response.status}")
+            if not html:
+                raise Exception("Failed to get rendered HTML. Empty HTML.")
             return html
 
         return await self._browser_render_common(url, page_handler)
