@@ -1,8 +1,6 @@
-import asyncio
 import logging
 import re
 import shutil
-import time
 from typing import List
 
 from . import util
@@ -11,7 +9,7 @@ import os
 import json
 import tempfile
 import aiohttp
-from playwright.async_api import async_playwright, Page
+from playwright.async_api import async_playwright, Page, Route, Request
 from playwright_stealth import Stealth
 from bs4 import BeautifulSoup
 
@@ -173,15 +171,17 @@ class Carnivore:
             no_stderr_warning=True,
         )
 
-    def _is_blocked(self, html: str) -> bool:
+    def _is_blocked(self, status: int, html: str) -> bool:
+        if status == 401 or status == 403:
+            return True
         for keyword in BLOCKED_KEYWORDS:
             if keyword in html:
                 return True
         return False
 
     @cached()
-    async def _get_rendered_html_from_zenrows(self, url: str) -> str:
-        await self._report_progress("Rendering URL with zenrows")
+    async def _get_unblocked_response_with_zenrows(self, url: str):
+        await self._report_progress("Getting unblocked HTML with zenrows")
         async with aiohttp.ClientSession() as session:
             params = {
                 "url": url,
@@ -192,12 +192,16 @@ class Carnivore:
             async with session.get(
                 "https://api.zenrows.com/v1/", params=params
             ) as response:
-                response.raise_for_status()
-                return await response.text()
+                status = response.status
+                body = await response.text()
+                await self._report_progress(
+                    "Finished getting unblocked HTML with zenrows"
+                )
+                return status, body
 
     @cached()
-    async def _get_rendered_html_from_oxylabs(self, url: str) -> str:
-        await self._report_progress("Rendering URL with oxylabs")
+    async def _get_unblocked_response_with_oxylabs(self, url: str) -> str:
+        await self._report_progress("Getting unblocked HTML with oxylabs")
         auth = aiohttp.BasicAuth(*self.oxylabs_user.split(":"))
         async with aiohttp.ClientSession(auth=auth) as session:
             body = {
@@ -211,12 +215,18 @@ class Carnivore:
             ) as response:
                 response.raise_for_status()
                 response_body = await response.json()
+                await self._report_progress(
+                    "Finished getting unblocked HTML with oxylabs"
+                )
                 result = response_body["results"][0]
-                if result["status_code"] >= 400:
-                    raise Exception(
-                        f"Failed to render URL. Status code: {result['status_code']}"
+                status_code = result["status_code"]
+                if status_code >= 400:
+                    return (
+                        status_code,
+                        f"OxyLabs failed to render the page. Code: {status_code}."
+                        " See https://developers.oxylabs.io/scraper-apis/web-scraper-api/response-codes for more information.",  # noqa: B950
                     )
-                return result["content"]
+                return status_code, result["content"]
 
     async def _browser_render_common(self, url: str, page_handler):
         async with Stealth().use_async(async_playwright()) as p:
@@ -239,6 +249,7 @@ class Carnivore:
                 user_agent=USER_AGENT,
                 extra_http_headers=EXTRA_HTTP_HEADERS,
             ) as context:
+                context.set_default_timeout(5 * 60 * 1000)  # 5 minutes
                 async with await context.new_page() as page:
                     return await page_handler(page, url)
 
@@ -248,36 +259,43 @@ class Carnivore:
 
         # Use Playwright and a headless browser to get rendered HTML
         async def page_handler(page: Page, url: str):
-            # Intercept network requests to block resources such as images.
-            # Since we use monolith to localize all resources,
-            # there's no need to load some resources during rendering stage,
-            # which only slows down the rendering and costs more data usage.
-            await page.route(
-                "**/*",
-                lambda route, request: (
-                    asyncio.create_task(route.abort())
-                    if request.resource_type in ("image", "media", "font")
-                    else asyncio.create_task(route.continue_())
-                ),
-            )
+            async def handle_route(route: Route, request: Request):
+                # Intercept network requests to block resources such as images.
+                # Since we use monolith to localize all resources,
+                # there's no need to load some resources during rendering stage,
+                # which only slows down the rendering and costs more data usage.
+                if request.resource_type in ("image", "media", "font"):
+                    await route.abort()
+                    return
+                if request.url == url and request.method == "GET":
+                    response = await route.fetch()
+                    status = response.status
+                    body = await response.text()
+                    if self._is_blocked(status, body):
+                        if self.zenrows_api_key:
+                            (
+                                status,
+                                body,
+                            ) = await self._get_unblocked_response_with_zenrows(url)
+                        elif self.oxylabs_user:
+                            (
+                                status,
+                                body,
+                            ) = await self._get_unblocked_response_with_oxylabs(url)
+                    await route.fulfill(
+                        status=status,
+                        content_type="text/html",
+                        body=body,
+                    )
+                    return
+                await route.continue_()
+
+            await page.route("**/*", handle_route)
             response = await page.goto(url)
-            original_status_code = response.status if response else 0
+            status_code = response.status if response else 0
             await page.wait_for_load_state("networkidle")
             html = await page.content()
-            max_wait_time = 10
-            now = time.time()
-            while self._is_blocked(html):
-                await asyncio.sleep(1)
-                await page.wait_for_load_state("networkidle")
-                html = await page.content()
-                if time.time() - now > max_wait_time:
-                    break
-            if self._is_blocked(html):
-                if self.zenrows_api_key:
-                    html = await self._get_rendered_html_from_zenrows(url)
-                elif self.oxylabs_user:
-                    html = await self._get_rendered_html_from_oxylabs(url)
-            elif original_status_code >= 400:
+            if status_code >= 400:
                 raise Exception(f"Failed to render URL. Status code: {response.status}")
             if not html:
                 raise Exception("Failed to get rendered HTML. Empty HTML.")
