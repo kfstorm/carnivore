@@ -160,7 +160,15 @@ class Carnivore:
         await self._report_progress(f"Embedding resources of {html_type}")
         # Call monolith to get HTML
         return await util.invoke_command(
-            ["monolith", "-", "-I", "-v", "-b", url],
+            [
+                "monolith",
+                "-",  # Read HTML from stdin
+                "-I",  # Isolate the document
+                "-v",  # No video
+                "-a",  # No audio
+                "-b",  # Base URL
+                url,
+            ],
             input=html,
             no_stderr_warning=True,
         )
