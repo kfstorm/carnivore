@@ -40,6 +40,7 @@ BLOCKED_KEYWORDS = [
     "We've detected unusual activity from your computer network",  # Bloomberg
     "DataDome Device Check",  # The Wall Street Journal
     "DataDome CAPTCHA",  # The Wall Street Journal
+    "Captcha Check",  # hCaptcha
 ]
 
 
