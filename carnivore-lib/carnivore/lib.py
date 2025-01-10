@@ -173,7 +173,7 @@ class Carnivore:
         )
 
     def _is_blocked(self, status: int, html: str) -> bool:
-        if status == 401 or status == 403:
+        if status >= 400 and status != 404:
             return True
         for keyword in BLOCKED_KEYWORDS:
             if keyword in html:
