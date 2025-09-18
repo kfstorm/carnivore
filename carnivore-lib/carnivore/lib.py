@@ -294,7 +294,7 @@ class Carnivore:
             await page.route("**/*", handle_route)
             response = await page.goto(url)
             status_code = response.status if response else 0
-            await page.wait_for_load_state("networkidle")
+            await page.wait_for_load_state("networkidle", timeout=5 * 60 * 1000)
             html = await page.content()
             if status_code >= 400:
                 raise Exception(f"Failed to render URL. Status code: {response.status}")
