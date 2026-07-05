@@ -84,6 +84,14 @@ curl -fsSL https://raw.githubusercontent.com/kfstorm/carnivore/main/scripts/inst
 
 The wrapper runs the official Docker image at execution time. This keeps heavy dependencies such as Chromium, Playwright, Pandoc, Node, and monolith inside the container. Docker is required on the host, but ordinary users do not need to clone the repository or build the image locally.
 
+You can also run the fetch application directly with Docker:
+
+```sh
+docker run --rm -e CARNIVORE_APPLICATION=fetch ghcr.io/kfstorm/carnivore:latest https://example.com
+```
+
+The first run may be slow because Docker needs to pull the image.
+
 The wrapper enables cache by default with a named Docker volume named `carnivore-cache` so repeated fetches of the same URL can reuse expensive browser rendering and conversion results.
 
 Disable cache when needed:
@@ -122,8 +130,10 @@ Wrapper options and environment variables:
 Install the Skill for compatible agents:
 
 ```sh
-npx skills add kfstorm/carnivore
+npx skills add kfstorm/carnivore --skill carnivore-fetch
 ```
+
+Add `--global` to install the Skill globally for supported agents.
 
 ## Usage
 
@@ -156,6 +166,14 @@ There are multiple ways to use Carnivore. Here are some examples:
 
 2. Send a URL to the Telegram bot or a channel with the Telegram bot. The bot will process the URL and save the web page in Markdown format in the `data` directory.
 
+### Run Carnivore as a fetch application
+
+```sh
+docker run --rm -e CARNIVORE_APPLICATION=fetch ghcr.io/kfstorm/carnivore:latest https://example.com
+```
+
+The fetch application prints extracted content to stdout instead of saving files to the output directory.
+
 ## Post-processing Customization
 
 You can customize the post-processing by:
@@ -186,7 +204,7 @@ docker run --rm -it "${args[@]}" ghcr.io/kfstorm/carnivore:latest
 
 Common arguments:
 
-- `CARNIVORE_APPLICATION`: Optional. The application to run. Default: `interactive-cli`.
+- `CARNIVORE_APPLICATION`: Optional. The application to run. Available values include `interactive-cli`, `telegram-bot`, and `fetch`. Default: `interactive-cli`.
 - `CARNIVORE_OUTPUT_DIR`: Optional. The directory to save the generated files. Default: `data`.
 - `CARNIVORE_OUTPUT_FORMATS`: Optional. The output formats to generate. Default: `markdown`. Split by `,`.
 - `CARNIVORE_POST_PROCESS_COMMAND`: Optional. The post-processing command to run. Default: `post-process/update_files.sh`.
@@ -223,6 +241,8 @@ OxyLabs-related arguments (Optional. For bypassing bot detection such as Cloudfl
 - **applications/interactive-cli**: An interactive CLI tool that reads URLs pasted in the terminal, archives webpages using **Carnivore Lib**, and invokes a post-processing command for further processing.
 
 - **applications/telegram-bot**: A Telegram bot that listens for URLs in messages sent to the bot or sent to a channel with the bot, archives webpages using **Carnivore Lib**, and invokes a post-processing command for further processing.
+
+- **applications/fetch**: A non-interactive fetch application that reads a URL from command arguments and prints extracted content to stdout for scripts and LLM agents.
 
 ### Carnivore Lib
 
