@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+if [[ ${1:-} == "--help" || ${1:-} == "-h" ]]; then
+  cat <<'EOF'
+Usage: carnivore-fetch URL [OPTIONS]
+
+Fetch readable web content with Carnivore's Dockerized browser pipeline.
+
+Options:
+  --format markdown|html|full_html  Extracted content format. Default: markdown.
+  --output raw|json                 CLI output mode. Default: raw.
+  --verbose                         Print progress logs to stderr. Default: quiet unless an error occurs.
+  -h, --help                        Show this help message. Default: not shown.
+
+Environment:
+  CARNIVORE_CACHE=0                 Disable cache. Cache is enabled by default.
+  CARNIVORE_CACHE_VOLUME=NAME       Docker cache volume. Default: carnivore-cache.
+  CARNIVORE_IMAGE=IMAGE             Override the Docker image. Default: official Carnivore image.
+  CARNIVORE_PULL=1                  Pull the Docker image before running. Default: do not pull first.
+  CARNIVORE_DOCKER_ARGS=ARGS        Extra docker run arguments. Default: none.
+  CARNIVORE_ZENROWS_API_KEY         Pass Zenrows API key. Default: unset.
+  CARNIVORE_ZENROWS_PREMIUM_PROXIES Pass Zenrows premium proxy flag. Default: unset.
+  CARNIVORE_ZENROWS_JS_RENDERING    Pass Zenrows JS rendering flag. Default: unset.
+  CARNIVORE_OXYLABS_USER            Pass OxyLabs credentials. Default: unset.
+  CARNIVORE_OXYLABS_JS_RENDERING    Pass OxyLabs JS rendering flag. Default: unset.
+EOF
+  exit 0
+fi
+
+if ! command -v docker > /dev/null; then
+  echo "Docker is required to run carnivore-fetch." >&2
+  exit 1
+fi
+
+image=${CARNIVORE_IMAGE:-ghcr.io/kfstorm/carnivore:latest}
+cache_volume=${CARNIVORE_CACHE_VOLUME:-carnivore-cache}
+
+if [[ ${CARNIVORE_PULL:-} == "1" ]]; then
+  docker pull "${image}" >&2
+fi
+
+docker_args=(
+  --rm
+  -e CARNIVORE_APPLICATION=fetch
+  -e CARNIVORE_OUTPUT_FORMATS=markdown
+  -e CARNIVORE_OUTPUT_DIR=/tmp/carnivore
+)
+
+if [[ ${CARNIVORE_CACHE:-} == "0" ]]; then
+  docker_args+=(
+    -e CARNIVORE_CACHE=0
+  )
+else
+  docker_args+=(
+    -v "${cache_volume}:/cache"
+    -e CARNIVORE_CACHE_DIR=/cache
+  )
+fi
+
+for env_name in \
+  CARNIVORE_ZENROWS_API_KEY \
+  CARNIVORE_ZENROWS_PREMIUM_PROXIES \
+  CARNIVORE_ZENROWS_JS_RENDERING \
+  CARNIVORE_OXYLABS_USER \
+  CARNIVORE_OXYLABS_JS_RENDERING; do
+  if [[ -n ${!env_name:-} ]]; then
+    docker_args+=(-e "${env_name}")
+  fi
+done
+
+if [[ -n ${CARNIVORE_DOCKER_ARGS:-} ]]; then
+  # shellcheck disable=SC2206
+  extra_docker_args=(${CARNIVORE_DOCKER_ARGS})
+  docker_args+=("${extra_docker_args[@]}")
+fi
+
+docker run "${docker_args[@]}" "${image}" "$@"

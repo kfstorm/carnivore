@@ -16,7 +16,7 @@ def carnivore_instance():
 
 
 def file_size_check(file_path, min_size):
-    with open(file_path, "r") as f:
+    with open(file_path, "rb") as f:
         size = len(f.read())
         assert (
             size >= min_size
@@ -78,7 +78,7 @@ async def test_pdf_images_no_lazy_loading(carnivore_instance):
 async def test_http_headers(carnivore_instance):
     output = await _test_common(
         carnivore_instance,
-        "https://myhttpheader.com/",
+        "http://gethttp.info/",
     )
     with open(output["files"]["full_html"], "r") as f:
         html = f.read()

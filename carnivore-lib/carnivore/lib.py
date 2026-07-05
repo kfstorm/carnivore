@@ -404,7 +404,7 @@ class Carnivore:
                         break
                 except Exception as e:
                     logging.exception(
-                        f"Failed to convert HTML to Markdown with {html_type}", e
+                        f"Failed to convert HTML to Markdown with {html_type}: {e}"
                     )
         if not markdown:
             raise Exception("Failed to convert HTML to Markdown")
@@ -463,3 +463,24 @@ class Carnivore:
                 )
             result["files"][format] = output_file_path
         return result
+
+    async def fetch(self, url: str, format: str = "markdown") -> dict:
+        if not url:
+            raise ValueError("URL is required")
+        if format not in SUPPORTED_FORMATS or format == "pdf":
+            raise ValueError(f"Unsupported fetch format: {format}")
+
+        rendered_html = await self._get_rendered_html_from_url(url)
+        polished_output = await self._get_polished_data(rendered_html)
+        metadata = polished_output["metadata"]
+        content = await SUPPORTED_FORMATS[format]["processor"](self, url)
+        if not content:
+            raise Exception(f"Failed to get {format} format: content is empty")
+        return {
+            "metadata": {
+                **metadata,
+                "url": url,
+            },
+            "format": format,
+            "content": content,
+        }

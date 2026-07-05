@@ -1,5 +1,7 @@
 # Carnivore
 
+[![skills.sh](https://skills.sh/b/kfstorm/carnivore)](https://skills.sh/kfstorm/carnivore)
+
 **NOTE: This project is still in early development. Contributions to this project are greatly welcome.**
 
 Carnivore is a simple tool that listens to your web page article archiving needs, removes clutter in the web pages, converts to various file formats, and does whatever you like to deal with converted files. You can combine this tool with your favorite document reader to read, comment, and modify articles.
@@ -39,6 +41,90 @@ Supported output formats:
 
 Output formats could be customized by setting the `CARNIVORE_OUTPUT_FORMATS` environment variable. e.g. `markdown,html,full_html` (split by `,`). Default: `markdown`.
 
+## LLM-friendly CLI
+
+Carnivore can be used as a browser-backed web fetcher for LLM agents. It renders pages in Chromium, extracts article content with Readability, converts it to Markdown, and prints the result to stdout.
+
+```sh
+carnivore-fetch https://example.com
+```
+
+The default output is raw Markdown with YAML front matter containing available metadata such as URL, title, byline, excerpt, and site name. The CLI is quiet unless an error occurs.
+
+Use JSON output when a structured envelope is useful:
+
+```sh
+carnivore-fetch https://example.com --output json
+```
+
+Select an extracted content format with `--format`:
+
+```sh
+carnivore-fetch https://example.com --format html
+carnivore-fetch https://example.com --format full_html
+```
+
+Print progress logs to stderr with `--verbose`:
+
+```sh
+carnivore-fetch https://example.com --verbose
+```
+
+Show supported options without starting Docker:
+
+```sh
+carnivore-fetch --help
+```
+
+Install the host wrapper:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/kfstorm/carnivore/main/scripts/install-carnivore-fetch.sh | sh
+```
+
+The wrapper runs the official Docker image at execution time. This keeps heavy dependencies such as Chromium, Playwright, Pandoc, Node, and monolith inside the container. Docker is required on the host, but ordinary users do not need to clone the repository or build the image locally.
+
+The wrapper enables cache by default with a named Docker volume named `carnivore-cache` so repeated fetches of the same URL can reuse expensive browser rendering and conversion results.
+
+Disable cache when needed:
+
+```sh
+CARNIVORE_CACHE=0 carnivore-fetch https://example.com
+```
+
+Override the Docker image for local development or private registries:
+
+```sh
+CARNIVORE_IMAGE=carnivore:local carnivore-fetch https://example.com
+```
+
+If configured on the host, the wrapper passes through `CARNIVORE_ZENROWS_API_KEY`, `CARNIVORE_ZENROWS_PREMIUM_PROXIES`, `CARNIVORE_ZENROWS_JS_RENDERING`, `CARNIVORE_OXYLABS_USER`, and `CARNIVORE_OXYLABS_JS_RENDERING`.
+
+Wrapper options and environment variables:
+
+| Name | Default behavior |
+| --- | --- |
+| `--format markdown\|html\|full_html` | Uses `markdown`. |
+| `--output raw\|json` | Uses `raw`. |
+| `--verbose` | Stays quiet unless an error occurs. |
+| `-h`, `--help` | Does not show help unless requested. |
+| `CARNIVORE_CACHE` | Enables cache. Set `CARNIVORE_CACHE=0` to disable it. |
+| `CARNIVORE_CACHE_VOLUME` | Uses the `carnivore-cache` Docker volume. |
+| `CARNIVORE_IMAGE` | Uses the official Carnivore image. Set it to override the image. |
+| `CARNIVORE_PULL` | Does not pull before running. Set `CARNIVORE_PULL=1` to pull first. |
+| `CARNIVORE_DOCKER_ARGS` | Passes no extra Docker arguments. |
+| `CARNIVORE_ZENROWS_API_KEY` | Not passed unless set on the host. |
+| `CARNIVORE_ZENROWS_PREMIUM_PROXIES` | Not passed unless set on the host. |
+| `CARNIVORE_ZENROWS_JS_RENDERING` | Not passed unless set on the host. |
+| `CARNIVORE_OXYLABS_USER` | Not passed unless set on the host. |
+| `CARNIVORE_OXYLABS_JS_RENDERING` | Not passed unless set on the host. |
+
+Install the Skill for compatible agents:
+
+```sh
+npx skills add kfstorm/carnivore
+```
+
 ## Usage
 
 There are multiple ways to use Carnivore. Here are some examples:
@@ -48,9 +134,8 @@ There are multiple ways to use Carnivore. Here are some examples:
 1. Start Carnivore.
 
     ```sh
-    git clone https://github.com/kfstorm/carnivore.git
-    cd carnivore
-    docker run --rm -it -v ./data:/app/data $(docker build . --quiet)
+    mkdir -p data
+    docker run --rm -it -v ./data:/app/data ghcr.io/kfstorm/carnivore:latest
     ```
 
 2. Paste a URL to the interactive CLI. The bot will process the URL and save the web page in Markdown format in the `data` directory.
@@ -60,14 +145,13 @@ There are multiple ways to use Carnivore. Here are some examples:
 1. Start Carnivore.
 
     ```sh
-    git clone https://github.com/kfstorm/carnivore.git
-    cd carnivore
     args=(
         -e CARNIVORE_APPLICATION=telegram-bot
         -e CARNIVORE_TELEGRAM_TOKEN=...
         -e CARNIVORE_TELEGRAM_CHANNEL_ID=... # optional. If you want to restrict the bot to a specific channel.
     )
-    docker run --rm -it "${args[@]}" -v ./data:/app/data $(docker build . --quiet)
+    mkdir -p data
+    docker run --rm -it "${args[@]}" -v ./data:/app/data ghcr.io/kfstorm/carnivore:latest
     ```
 
 2. Send a URL to the Telegram bot or a channel with the Telegram bot. The bot will process the URL and save the web page in Markdown format in the `data` directory.
@@ -95,7 +179,7 @@ args=(
     -e CARNIVORE_MARKDOWN_FRONTMATTER_ADDITIONAL_ARGS="--timestamp-key date-created" # optional. you may want to add the timestamp to the frontmatter.
     -e TZ=Asia/Shanghai # optional. you may want to customize the timezone.
 )
-docker run --rm -it "${args[@]}" $(docker build . --quiet)
+docker run --rm -it "${args[@]}" ghcr.io/kfstorm/carnivore:latest
 ```
 
 ## Arguments

@@ -68,4 +68,4 @@ if [[ ${CARNIVORE_APPLICATION} == "telegram-bot" ]]; then
   fi
 fi
 
-python "${application_script}" "${args[@]}"
+python "${application_script}" "${args[@]}" "$@"
