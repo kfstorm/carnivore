@@ -7,9 +7,10 @@ import pickle
 CACHE_SCHEMA_VERSION = 1
 
 
-def _generate_key(func_name: str, args: tuple, kwargs: dict) -> str:
+def _generate_key(func_name: str, args: tuple, kwargs: dict, namespace=None) -> str:
     key_data = {
         "schema_version": CACHE_SCHEMA_VERSION,
+        "namespace": namespace,
         "func_name": func_name,
         "args": args,
         "kwargs": kwargs,
@@ -43,7 +44,10 @@ def cached():
     def decorator(func):
         async def wrapper(*args, **kwargs):
             (func_this, *other_args) = args
-            key = _generate_key(func.__name__, other_args, kwargs)
+            namespace = None
+            if hasattr(func_this, "get_cache_namespace"):
+                namespace = func_this.get_cache_namespace()
+            key = _generate_key(func.__name__, other_args, kwargs, namespace)
             value = func_this.cache_store.get(key)
             if value is None:
                 cache_dir = os.environ.get("CARNIVORE_CACHE_DIR")

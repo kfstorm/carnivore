@@ -1,3 +1,4 @@
+import hashlib
 import logging
 import re
 import shutil
@@ -52,6 +53,12 @@ EXTRA_HTTP_HEADERS = {
 
 
 class Carnivore:
+    @staticmethod
+    def _hash_cache_value(value):
+        if not value:
+            return None
+        return hashlib.sha256(str(value).encode()).hexdigest()
+
     @classmethod
     def setup_arg_parser(cls, parser):
         def comma_separated_list(value):
@@ -148,6 +155,16 @@ class Carnivore:
 
         self.progress_callback = None
         self.cache_store = {}
+
+    def get_cache_namespace(self):
+        return {
+            "chrome_extension_paths": self.chrome_extension_paths,
+            "zenrows_api_key": self._hash_cache_value(self.zenrows_api_key),
+            "zenrows_premium_proxies": self.zenrows_premium_proxies,
+            "zenrows_js_rendering": self.zenrows_js_rendering,
+            "oxylabs_user": self._hash_cache_value(self.oxylabs_user),
+            "oxylabs_js_rendering": self.oxylabs_js_rendering,
+        }
 
     def set_progress_callback(self, callback):
         # Set a callback function to report progress

@@ -1,5 +1,6 @@
 import pytest
 import carnivore
+from carnivore.cache import _generate_key
 
 MARKDOWN_MIN_SIZE_WITH_IMAGES = 1000  # Adjust this value as needed
 
@@ -35,6 +36,46 @@ async def _test_common(
     if pdf_min_size:
         file_size_check(output["files"]["pdf"], pdf_min_size)
     return output
+
+
+def test_cache_key_includes_runtime_configuration():
+    default_instance = carnivore.Carnivore(carnivore.SUPPORTED_FORMATS, "data")
+    zenrows_instance = carnivore.Carnivore(
+        carnivore.SUPPORTED_FORMATS,
+        "data",
+        zenrows_api_key="secret-api-key",
+        zenrows_premium_proxies=True,
+    )
+    oxylabs_instance = carnivore.Carnivore(
+        carnivore.SUPPORTED_FORMATS,
+        "data",
+        oxylabs_user="user:secret-password",
+        oxylabs_js_rendering=True,
+    )
+
+    args = ("https://example.com",)
+    default_key = _generate_key(
+        "_get_rendered_html_from_url",
+        args,
+        {},
+        default_instance.get_cache_namespace(),
+    )
+    zenrows_key = _generate_key(
+        "_get_rendered_html_from_url",
+        args,
+        {},
+        zenrows_instance.get_cache_namespace(),
+    )
+    oxylabs_key = _generate_key(
+        "_get_rendered_html_from_url",
+        args,
+        {},
+        oxylabs_instance.get_cache_namespace(),
+    )
+
+    assert len({default_key, zenrows_key, oxylabs_key}) == 3
+    assert "secret-api-key" not in str(zenrows_instance.get_cache_namespace())
+    assert "secret-password" not in str(oxylabs_instance.get_cache_namespace())
 
 
 @pytest.mark.asyncio
