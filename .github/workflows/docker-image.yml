@@ -4,6 +4,10 @@ on:
   push:
     branches:
       - main
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - "skills/**"
   workflow_dispatch:
 
 permissions:
@@ -37,3 +41,5 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ghcr.io/kfstorm/carnivore:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

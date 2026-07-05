@@ -105,7 +105,7 @@ class Carnivore:
             type=str,
             help=(
                 "Oxylabs Web scraping API username and password."
-                " Format: username:password",
+                " Format: username:password"
             ),
         )
         parser.add_argument(

@@ -1,13 +1,3 @@
-FROM rust:1.82.0-bookworm AS monolith_builder
-
-ARG MONOLITH_VERSION=2.8.3
-RUN curl -fsSL "https://github.com/Y2Z/monolith/archive/refs/tags/v${MONOLITH_VERSION}.zip" -o /tmp/monolith.zip && \
-    mkdir -p /tmp/monolith && \
-    unzip /tmp/monolith.zip -d /tmp/monolith && \
-    cd /tmp/monolith/monolith-${MONOLITH_VERSION} && \
-    make install && \
-    rm -rf /tmp/monolith /tmp/monolith.zip
-
 FROM python:3.13.0-slim
 
 ENV NODE_ENV=production
@@ -24,7 +14,15 @@ ARG PANDOC_VERSION=3.5
 RUN curl -fsSL "https://github.com/jgm/pandoc/releases/download/${PANDOC_VERSION}/pandoc-${PANDOC_VERSION}-linux-$(dpkg --print-architecture).tar.gz" -o pandoc.tar.gz && \
     tar -xzf pandoc.tar.gz -C /usr/local --strip-components 1 && \
     rm pandoc.tar.gz
-COPY --from=monolith_builder /usr/local/cargo/bin/monolith /usr/local/bin/monolith
+ARG TARGETARCH
+ARG MONOLITH_VERSION=2.10.1
+RUN case "${TARGETARCH}" in \
+        amd64) monolith_arch=x86_64 ;; \
+        arm64) monolith_arch=aarch64 ;; \
+        *) echo "Unsupported architecture: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac && \
+    curl -fsSL "https://github.com/Y2Z/monolith/releases/download/v${MONOLITH_VERSION}/monolith-gnu-linux-${monolith_arch}" -o /usr/local/bin/monolith && \
+    chmod +x /usr/local/bin/monolith
 
 WORKDIR /app
 
