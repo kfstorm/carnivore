@@ -44,6 +44,7 @@ RESOURCE_TAGS = (
     "iframe",
     "object",
     "embed",
+    "svg",
 )
 
 

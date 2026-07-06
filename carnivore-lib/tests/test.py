@@ -184,11 +184,19 @@ def test_fetch_wrapper_pull_env_overrides_daily_policy(tmp_path):
 
 async def _get_stubbed_outputs(monkeypatch, client, get_embedded_html):
     async def get_rendered_html_from_url(url):
-        return '<html><body><article><img src="image.jpg">rendered</article></body></html>'
+        return (
+            '<html><body><article><img src="image.jpg">'
+            '<a href="/companies">All companies<svg><path d="M0 0"></path></svg></a>'
+            "rendered</article></body></html>"
+        )
 
     async def get_polished_data(html):
         return {
-            "html": '<article><img src="image.jpg">polished</article>',
+            "html": (
+                '<article><img src="image.jpg">'
+                '<a href="/companies">All companies<svg><path d="M0 0"></path></svg></a>'
+                "polished</article>"
+            ),
             "metadata": {},
         }
 
@@ -284,7 +292,41 @@ async def test_default_outputs_omit_resources(monkeypatch):
     assert "image.jpg" not in html
     assert "image.jpg" not in full_html
     assert "image.jpg" not in markdown
+    assert "<svg" not in html
+    assert "<svg" not in full_html
     assert len(markdown) < 1000
+
+
+@pytest.mark.asyncio
+async def test_default_markdown_omits_inline_svg_data_uri(monkeypatch):
+    client = carnivore.Carnivore(["markdown"], "data")
+
+    async def get_rendered_html_from_url(url):
+        return (
+            '<html><body><article><a href="/companies">All companies'
+            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">'
+            '<path d="M6 3L11 8L6 13"></path>'
+            "</svg></a></article></body></html>"
+        )
+
+    async def get_polished_data(html):
+        return {
+            "html": (
+                '<article><a href="/companies">All companies'
+                '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">'
+                '<path d="M6 3L11 8L6 13"></path>'
+                "</svg></a></article>"
+            ),
+            "metadata": {},
+        }
+
+    monkeypatch.setattr(client, "_get_rendered_html_from_url", get_rendered_html_from_url)
+    monkeypatch.setattr(client, "_get_polished_data", get_polished_data)
+
+    markdown = await client._get_markdown_format("https://example.com")
+
+    assert "data:image/svg+xml" not in markdown
+    assert "All companies" in markdown
 
 
 @pytest.mark.asyncio
