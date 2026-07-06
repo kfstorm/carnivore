@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     unzip \
     && rm -rf /var/lib/apt/lists/*
-ARG PANDOC_VERSION=3.5
+ARG PANDOC_VERSION=3.10
 RUN curl -fsSL "https://github.com/jgm/pandoc/releases/download/${PANDOC_VERSION}/pandoc-${PANDOC_VERSION}-linux-$(dpkg --print-architecture).tar.gz" -o pandoc.tar.gz && \
     tar -xzf pandoc.tar.gz -C /usr/local --strip-components 1 && \
     rm pandoc.tar.gz
