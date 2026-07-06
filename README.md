@@ -122,7 +122,8 @@ Wrapper options and environment variables:
 | `CARNIVORE_CACHE` | Enables cache. Set `CARNIVORE_CACHE=0` to disable it. |
 | `CARNIVORE_CACHE_VOLUME` | Uses the `carnivore-cache` Docker volume. |
 | `CARNIVORE_IMAGE` | Uses the official Carnivore image. Set it to override the image. |
-| `CARNIVORE_PULL` | Does not pull before running. Set `CARNIVORE_PULL=1` to pull first. |
+| `CARNIVORE_PULL` | Pulls the Docker image at most once per day. Set `CARNIVORE_PULL=1` to pull every run, or `CARNIVORE_PULL=0` to skip pulling. |
+| `CARNIVORE_STATE_DIR` | Stores pull timestamps under the XDG state directory. Set it to override the state directory. |
 | `CARNIVORE_DOCKER_ARGS` | Passes no extra Docker arguments. |
 | `CARNIVORE_RESOURCE_MODE` | Uses `omit`. Set to `link` to keep resource links or `embed` for self-contained archive output. PDF generation embeds internally. |
 | `CARNIVORE_ZENROWS_API_KEY` | Not passed unless set on the host. |

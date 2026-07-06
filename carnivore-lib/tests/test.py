@@ -132,6 +132,56 @@ def test_fetch_wrapper_passes_resource_mode_env(tmp_path):
     assert "CARNIVORE_RESOURCE_MODE" in args
 
 
+def _fake_docker_command_logger(tmp_path):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    commands_file = tmp_path / "commands.txt"
+    docker_path = bin_dir / "docker"
+    docker_path.write_text(
+        "#!/usr/bin/env bash\n"
+        "printf '%s\n' \"$1\" >> \"${CARNIVORE_TEST_COMMANDS_FILE}\"\n"
+    )
+    docker_path.chmod(0o755)
+    return bin_dir, commands_file
+
+
+def _fetch_wrapper_test_env(tmp_path):
+    bin_dir, commands_file = _fake_docker_command_logger(tmp_path)
+    return commands_file, {
+        **os.environ,
+        "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        "CARNIVORE_TEST_COMMANDS_FILE": str(commands_file),
+        "CARNIVORE_CACHE": "0",
+        "XDG_STATE_HOME": str(tmp_path / "state"),
+    }
+
+
+def _run_fetch_wrapper(env):
+    subprocess.run(
+        ["skills/carnivore-fetch/bin/carnivore-fetch", "https://example.com"],
+        check=True,
+        env=env,
+    )
+
+
+def test_fetch_wrapper_pulls_at_most_once_per_day_by_default(tmp_path):
+    commands_file, env = _fetch_wrapper_test_env(tmp_path)
+
+    _run_fetch_wrapper(env)
+    _run_fetch_wrapper(env)
+
+    assert commands_file.read_text().splitlines() == ["pull", "run", "run"]
+
+
+def test_fetch_wrapper_pull_env_overrides_daily_policy(tmp_path):
+    commands_file, base_env = _fetch_wrapper_test_env(tmp_path)
+
+    _run_fetch_wrapper({**base_env, "CARNIVORE_PULL": "0"})
+    _run_fetch_wrapper({**base_env, "CARNIVORE_PULL": "1"})
+
+    assert commands_file.read_text().splitlines() == ["run", "pull", "run"]
+
+
 async def _get_stubbed_outputs(monkeypatch, client, get_embedded_html):
     async def get_rendered_html_from_url(url):
         return '<html><body><article><img src="image.jpg">rendered</article></body></html>'

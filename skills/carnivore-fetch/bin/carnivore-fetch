@@ -20,7 +20,8 @@ Environment:
   CARNIVORE_CACHE=0                 Disable cache. Cache is enabled by default.
   CARNIVORE_CACHE_VOLUME=NAME       Docker cache volume. Default: carnivore-cache.
   CARNIVORE_IMAGE=IMAGE             Override the Docker image. Default: official Carnivore image.
-  CARNIVORE_PULL=1                  Pull the Docker image before running. Default: do not pull first.
+  CARNIVORE_PULL=0|1                Control Docker image pulls. Default: pull at most once per day.
+  CARNIVORE_STATE_DIR=DIR           State directory for pull timestamps. Default: XDG state directory.
   CARNIVORE_DOCKER_ARGS=ARGS        Extra docker run arguments. Default: none.
   CARNIVORE_RESOURCE_MODE=MODE      Same as --resource-mode. Values: omit, link, embed.
   CARNIVORE_ZENROWS_API_KEY         Pass Zenrows API key. Default: unset.
@@ -40,8 +41,29 @@ fi
 image=${CARNIVORE_IMAGE:-ghcr.io/kfstorm/carnivore:latest}
 cache_volume=${CARNIVORE_CACHE_VOLUME:-carnivore-cache}
 
-if [[ ${CARNIVORE_PULL:-} == "1" ]]; then
+pull_mode=${CARNIVORE_PULL:-daily}
+if [[ ${pull_mode} == "1" ]]; then
   docker pull "${image}" >&2
+elif [[ ${pull_mode} != "0" ]]; then
+  now=$(date +%s)
+  state_dir=${CARNIVORE_STATE_DIR:-${XDG_STATE_HOME:-${HOME}/.local/state}/carnivore-fetch}
+  image_state_name=${image//[^[:alnum:]._-]/_}
+  pull_stamp="${state_dir}/pull-${image_state_name}.stamp"
+  last_pull=0
+
+  if [[ -r ${pull_stamp} ]]; then
+    read -r last_pull < "${pull_stamp}" || true
+  fi
+
+  if ! [[ ${last_pull} =~ ^[0-9]+$ ]]; then
+    last_pull=0
+  fi
+
+  if (( now < last_pull || now - last_pull >= 86400 )); then
+    docker pull "${image}" >&2
+    mkdir -p "${state_dir}"
+    printf '%s\n' "${now}" > "${pull_stamp}"
+  fi
 fi
 
 docker_args=(
