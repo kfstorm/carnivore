@@ -58,6 +58,10 @@ if [[ ${CARNIVORE_OXYLABS_JS_RENDERING:-} == "true" ]]; then
   args+=(--oxylabs-js-rendering)
 fi
 
+if [[ ${CARNIVORE_EMBED_RESOURCES:-} == "true" ]]; then
+  args+=(--embed-resources)
+fi
+
 if [[ ${CARNIVORE_APPLICATION} == "telegram-bot" ]]; then
   if [[ -n ${CARNIVORE_TELEGRAM_TOKEN:-} ]]; then
     args+=(--token "${CARNIVORE_TELEGRAM_TOKEN}")

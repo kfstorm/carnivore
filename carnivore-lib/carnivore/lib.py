@@ -114,6 +114,15 @@ class Carnivore:
             action="store_true",
             help="Enable Oxylabs JS rendering",
         )
+        parser.add_argument(
+            "--embed-resources",
+            required=False,
+            action="store_true",
+            help=(
+                "Embed external resources before generating Markdown or HTML outputs."
+                " PDF embeds resources internally."
+            ),
+        )
 
     @classmethod
     def from_args(cls, args):
@@ -126,6 +135,7 @@ class Carnivore:
             zenrows_js_rendering=args.zenrows_js_rendering,
             oxylabs_user=args.oxylabs_user,
             oxylabs_js_rendering=args.oxylabs_js_rendering,
+            embed_resources=args.embed_resources,
         )
 
     def __init__(
@@ -138,6 +148,7 @@ class Carnivore:
         zenrows_js_rendering: bool = False,
         oxylabs_user: str = None,
         oxylabs_js_rendering: bool = False,
+        embed_resources: bool = False,
     ):
         self.formats = formats
         for format in formats:
@@ -150,6 +161,7 @@ class Carnivore:
         self.zenrows_js_rendering = zenrows_js_rendering
         self.oxylabs_user = oxylabs_user
         self.oxylabs_js_rendering = oxylabs_js_rendering
+        self.embed_resources = embed_resources
         if zenrows_api_key and oxylabs_user:
             raise ValueError("Only one of Zenrows and Oxylabs can be used at a time")
 
@@ -164,6 +176,7 @@ class Carnivore:
             "zenrows_js_rendering": self.zenrows_js_rendering,
             "oxylabs_user": self._hash_cache_value(self.oxylabs_user),
             "oxylabs_js_rendering": self.oxylabs_js_rendering,
+            "embed_resources": self.embed_resources,
         }
 
     def set_progress_callback(self, callback):
@@ -388,32 +401,45 @@ class Carnivore:
         return base_file_name
 
     async def _get_html_format(self, url: str):
-        # Render the URL with a browser before processing with monolith
-        # to fix parsing of web pages whose article content is loaded by JavaScript.
+        # Render the URL with a browser before polishing HTML to fix parsing of
+        # web pages whose article content is loaded by JavaScript.
         # e.g. https://battleda.sh/blog/ea-account-takeover
         rendered_html = await self._get_rendered_html_from_url(url)
         polished_output = await self._get_polished_data(rendered_html)
         polished_html = polished_output["html"]
-        return await self._get_embedded_html(url, polished_html, "polished HTML")
+        if self.embed_resources:
+            return await self._get_embedded_html(url, polished_html, "polished HTML")
+        return polished_html
 
     async def _get_full_html_format(self, url: str):
         rendered_html = await self._get_rendered_html_from_url(url)
-        return await self._get_embedded_html(url, rendered_html, "rendered HTML")
+        if self.embed_resources:
+            return await self._get_embedded_html(url, rendered_html, "rendered HTML")
+        return rendered_html
 
     async def _get_markdown_format(self, url: str):
         rendered_html = await self._get_rendered_html_from_url(url)
         polished_output = await self._get_polished_data(rendered_html)
         polished_html = polished_output["html"]
-        embedded_html = await self._get_embedded_html(
-            url, polished_html, "polished HTML"
-        )
-        # Convert HTML to Markdown using pandoc
         markdown = None
-        for html_type, html in [
-            ("embedded HTML", embedded_html),
-            ("polished HTML", polished_html),
-            ("rendered HTML", rendered_html),
-        ]:
+        html_candidates = []
+        if self.embed_resources:
+            html_candidates.append(
+                (
+                    "embedded HTML",
+                    lambda: self._get_embedded_html(url, polished_html, "polished HTML"),
+                )
+            )
+        html_candidates.extend(
+            [
+                ("polished HTML", polished_html),
+                ("rendered HTML", rendered_html),
+            ]
+        )
+        for html_type, html_or_loader in html_candidates:
+            html = html_or_loader
+            if callable(html_or_loader):
+                html = await html_or_loader()
             if html:
                 try:
                     markdown = await self._get_markdown(html, html_type)
@@ -428,7 +454,8 @@ class Carnivore:
         return markdown
 
     async def _get_pdf_format(self, url: str):
-        full_html = await self._get_full_html_format(url)
+        rendered_html = await self._get_rendered_html_from_url(url)
+        full_html = await self._get_embedded_html(url, rendered_html, "rendered HTML")
         return await self._get_pdf_from_html(full_html)
 
     async def archive(self, url: str):

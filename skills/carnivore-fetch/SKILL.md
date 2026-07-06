@@ -17,6 +17,8 @@ Use this when a task involves reading, summarizing, extracting, or archiving web
 
 The default command prints Markdown with YAML front matter to stdout. It is quiet unless an error occurs.
 
+External resources are not embedded in Markdown or HTML by default, which keeps output smaller for LLM usage. Use `--embed-resources` only when a task explicitly needs self-contained archive output. PDF generation embeds resources internally so relative resources work from local temporary HTML.
+
 The front matter contains common metadata such as URL, title, byline, excerpt, and site name when available.
 
 The wrapper enables persistent cache by default through the `carnivore-cache` Docker volume. Do not disable it unless the task specifically requires a fresh fetch.

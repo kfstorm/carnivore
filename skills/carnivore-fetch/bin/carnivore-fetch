@@ -11,6 +11,7 @@ Fetch readable web content with Carnivore's Dockerized browser pipeline.
 Options:
   --format markdown|html|full_html  Extracted content format. Default: markdown.
   --output raw|json                 CLI output mode. Default: raw.
+  --embed-resources                 Embed external resources before Markdown/HTML output. PDF embeds internally. Default: not embedded.
   --verbose                         Print progress logs to stderr. Default: quiet unless an error occurs.
   -h, --help                        Show this help message. Default: not shown.
 
@@ -20,6 +21,7 @@ Environment:
   CARNIVORE_IMAGE=IMAGE             Override the Docker image. Default: official Carnivore image.
   CARNIVORE_PULL=1                  Pull the Docker image before running. Default: do not pull first.
   CARNIVORE_DOCKER_ARGS=ARGS        Extra docker run arguments. Default: none.
+  CARNIVORE_EMBED_RESOURCES=true    Embed external resources before Markdown/HTML output. PDF embeds internally. Default: not embedded.
   CARNIVORE_ZENROWS_API_KEY         Pass Zenrows API key. Default: unset.
   CARNIVORE_ZENROWS_PREMIUM_PROXIES Pass Zenrows premium proxy flag. Default: unset.
   CARNIVORE_ZENROWS_JS_RENDERING    Pass Zenrows JS rendering flag. Default: unset.
@@ -63,6 +65,7 @@ for env_name in \
   CARNIVORE_ZENROWS_API_KEY \
   CARNIVORE_ZENROWS_PREMIUM_PROXIES \
   CARNIVORE_ZENROWS_JS_RENDERING \
+  CARNIVORE_EMBED_RESOURCES \
   CARNIVORE_OXYLABS_USER \
   CARNIVORE_OXYLABS_JS_RENDERING; do
   if [[ -n ${!env_name:-} ]]; then
