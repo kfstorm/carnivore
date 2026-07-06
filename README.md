@@ -94,7 +94,7 @@ The first run may be slow because Docker needs to pull the image.
 
 The wrapper enables cache by default with a named Docker volume named `carnivore-cache` so repeated fetches of the same URL can reuse expensive browser rendering and conversion results.
 
-Carnivore does not embed external resources in Markdown or HTML outputs by default. This keeps output smaller for scripts and LLM agents. Set `--embed-resources` or `CARNIVORE_EMBED_RESOURCES=true` when using Carnivore for webpage archiving and you need self-contained Markdown or HTML output. PDF generation always embeds resources internally so relative images and styles still work from the temporary local HTML file.
+Carnivore uses `--resource-mode omit` by default, which removes image, media, and embedded resource elements from Markdown and HTML outputs. This keeps output focused for scripts and LLM agents by avoiding resource links. Set `--resource-mode link` to keep original resource links, or `--resource-mode embed` when using Carnivore for webpage archiving and you need self-contained Markdown or HTML output. PDF generation always embeds resources internally so relative images and styles still work from the temporary local HTML file.
 
 Disable cache when needed:
 
@@ -108,7 +108,7 @@ Override the Docker image for local development or private registries:
 CARNIVORE_IMAGE=carnivore:local carnivore-fetch https://example.com
 ```
 
-If configured on the host, the wrapper passes through `CARNIVORE_EMBED_RESOURCES`, `CARNIVORE_ZENROWS_API_KEY`, `CARNIVORE_ZENROWS_PREMIUM_PROXIES`, `CARNIVORE_ZENROWS_JS_RENDERING`, `CARNIVORE_OXYLABS_USER`, and `CARNIVORE_OXYLABS_JS_RENDERING`.
+If configured on the host, the wrapper passes through `CARNIVORE_RESOURCE_MODE`, `CARNIVORE_ZENROWS_API_KEY`, `CARNIVORE_ZENROWS_PREMIUM_PROXIES`, `CARNIVORE_ZENROWS_JS_RENDERING`, `CARNIVORE_OXYLABS_USER`, and `CARNIVORE_OXYLABS_JS_RENDERING`.
 
 Wrapper options and environment variables:
 
@@ -116,7 +116,7 @@ Wrapper options and environment variables:
 | --- | --- |
 | `--format markdown\|html\|full_html` | Uses `markdown`. |
 | `--output raw\|json` | Uses `raw`. |
-| `--embed-resources` | Does not embed external resources in Markdown or HTML outputs. PDF generation embeds internally. |
+| `--resource-mode omit\|link\|embed` | Uses `omit`. `omit` removes resource elements, `link` keeps original links, and `embed` inlines resources. PDF generation embeds internally. |
 | `--verbose` | Stays quiet unless an error occurs. |
 | `-h`, `--help` | Does not show help unless requested. |
 | `CARNIVORE_CACHE` | Enables cache. Set `CARNIVORE_CACHE=0` to disable it. |
@@ -124,7 +124,7 @@ Wrapper options and environment variables:
 | `CARNIVORE_IMAGE` | Uses the official Carnivore image. Set it to override the image. |
 | `CARNIVORE_PULL` | Does not pull before running. Set `CARNIVORE_PULL=1` to pull first. |
 | `CARNIVORE_DOCKER_ARGS` | Passes no extra Docker arguments. |
-| `CARNIVORE_EMBED_RESOURCES` | Does not embed external resources in Markdown or HTML outputs. Set `CARNIVORE_EMBED_RESOURCES=true` for self-contained archive output. PDF generation embeds internally. |
+| `CARNIVORE_RESOURCE_MODE` | Uses `omit`. Set to `link` to keep resource links or `embed` for self-contained archive output. PDF generation embeds internally. |
 | `CARNIVORE_ZENROWS_API_KEY` | Not passed unless set on the host. |
 | `CARNIVORE_ZENROWS_PREMIUM_PROXIES` | Not passed unless set on the host. |
 | `CARNIVORE_ZENROWS_JS_RENDERING` | Not passed unless set on the host. |
@@ -211,7 +211,7 @@ Common arguments:
 - `CARNIVORE_APPLICATION`: Optional. The application to run. Available values include `interactive-cli`, `telegram-bot`, and `fetch`. Default: `interactive-cli`.
 - `CARNIVORE_OUTPUT_DIR`: Optional. The directory to save the generated files. Default: `data`.
 - `CARNIVORE_OUTPUT_FORMATS`: Optional. The output formats to generate. Default: `markdown`. Split by `,`.
-- `CARNIVORE_EMBED_RESOURCES`: Optional. Set to `true` to embed external resources before generating Markdown or HTML outputs. Default: resources are not embedded in Markdown or HTML, which is recommended for fetch/LLM usage. Enable this for self-contained archive output. PDF generation embeds resources internally regardless of this setting.
+- `CARNIVORE_RESOURCE_MODE`: Optional. Resource output mode for Markdown or HTML outputs. Available values are `omit`, `link`, and `embed`. Default: `omit`, which is recommended for fetch/LLM usage. Set to `link` to keep original resource links, or `embed` for self-contained archive output. PDF generation embeds resources internally regardless of this setting.
 - `CARNIVORE_POST_PROCESS_COMMAND`: Optional. The post-processing command to run. Default: `post-process/update_files.sh`.
 - `CARNIVORE_MARKDOWN_FRONTMATTER_KEY_MAPPING`: Optional. The key mapping for the frontmatter in the Markdown file. The format is `metadata_key1:frontmatter_key1,metadata_key2:frontmatter_key2`. e.g.: `url:url,title:title`.
 - `CARNIVORE_MARKDOWN_FRONTMATTER_ADDITIONAL_ARGS`: Optional. Additional arguments for the frontmatter in the Markdown file. e.g. `--timestamp-key date-created --timestamp-format %Y-%m-%d %H:%M:%S`.

@@ -34,6 +34,18 @@ SUPPORTED_FORMATS = {
     },
 }
 
+RESOURCE_MODES = ("omit", "link", "embed")
+RESOURCE_TAGS = (
+    "img",
+    "picture",
+    "source",
+    "video",
+    "audio",
+    "iframe",
+    "object",
+    "embed",
+)
+
 
 BLOCKED_KEYWORDS = [
     "Just a moment...",  # Cloudflare
@@ -115,11 +127,13 @@ class Carnivore:
             help="Enable Oxylabs JS rendering",
         )
         parser.add_argument(
-            "--embed-resources",
-            required=False,
-            action="store_true",
+            "--resource-mode",
+            choices=RESOURCE_MODES,
+            default="omit",
             help=(
-                "Embed external resources before generating Markdown or HTML outputs."
+                "Resource output mode for Markdown or HTML outputs."
+                " omit removes images/media, link keeps original links,"
+                " embed inlines resources."
                 " PDF embeds resources internally."
             ),
         )
@@ -135,7 +149,7 @@ class Carnivore:
             zenrows_js_rendering=args.zenrows_js_rendering,
             oxylabs_user=args.oxylabs_user,
             oxylabs_js_rendering=args.oxylabs_js_rendering,
-            embed_resources=args.embed_resources,
+            resource_mode=args.resource_mode,
         )
 
     def __init__(
@@ -148,7 +162,7 @@ class Carnivore:
         zenrows_js_rendering: bool = False,
         oxylabs_user: str = None,
         oxylabs_js_rendering: bool = False,
-        embed_resources: bool = False,
+        resource_mode: str = "omit",
     ):
         self.formats = formats
         for format in formats:
@@ -161,7 +175,9 @@ class Carnivore:
         self.zenrows_js_rendering = zenrows_js_rendering
         self.oxylabs_user = oxylabs_user
         self.oxylabs_js_rendering = oxylabs_js_rendering
-        self.embed_resources = embed_resources
+        if resource_mode not in RESOURCE_MODES:
+            raise ValueError(f"Unsupported resource mode: {resource_mode}")
+        self.resource_mode = resource_mode
         if zenrows_api_key and oxylabs_user:
             raise ValueError("Only one of Zenrows and Oxylabs can be used at a time")
 
@@ -176,7 +192,7 @@ class Carnivore:
             "zenrows_js_rendering": self.zenrows_js_rendering,
             "oxylabs_user": self._hash_cache_value(self.oxylabs_user),
             "oxylabs_js_rendering": self.oxylabs_js_rendering,
-            "embed_resources": self.embed_resources,
+            "resource_mode": self.resource_mode,
         }
 
     def set_progress_callback(self, callback):
@@ -201,6 +217,12 @@ class Carnivore:
             input=html,
             no_stderr_warning=True,
         )
+
+    def _remove_resources(self, html: str) -> str:
+        soup = BeautifulSoup(html, "html.parser")
+        for tag in soup.find_all(RESOURCE_TAGS):
+            tag.decompose()
+        return str(soup)
 
     def _is_blocked(self, status: int, html: str) -> bool:
         if status >= 400 and status != 404:
@@ -407,14 +429,18 @@ class Carnivore:
         rendered_html = await self._get_rendered_html_from_url(url)
         polished_output = await self._get_polished_data(rendered_html)
         polished_html = polished_output["html"]
-        if self.embed_resources:
+        if self.resource_mode == "embed":
             return await self._get_embedded_html(url, polished_html, "polished HTML")
+        if self.resource_mode == "omit":
+            return self._remove_resources(polished_html)
         return polished_html
 
     async def _get_full_html_format(self, url: str):
         rendered_html = await self._get_rendered_html_from_url(url)
-        if self.embed_resources:
+        if self.resource_mode == "embed":
             return await self._get_embedded_html(url, rendered_html, "rendered HTML")
+        if self.resource_mode == "omit":
+            return self._remove_resources(rendered_html)
         return rendered_html
 
     async def _get_markdown_format(self, url: str):
@@ -423,19 +449,27 @@ class Carnivore:
         polished_html = polished_output["html"]
         markdown = None
         html_candidates = []
-        if self.embed_resources:
+        if self.resource_mode == "embed":
             html_candidates.append(
                 (
                     "embedded HTML",
                     lambda: self._get_embedded_html(url, polished_html, "polished HTML"),
                 )
             )
-        html_candidates.extend(
-            [
-                ("polished HTML", polished_html),
-                ("rendered HTML", rendered_html),
-            ]
-        )
+        if self.resource_mode == "omit":
+            html_candidates.extend(
+                [
+                    ("polished HTML", self._remove_resources(polished_html)),
+                    ("rendered HTML", self._remove_resources(rendered_html)),
+                ]
+            )
+        else:
+            html_candidates.extend(
+                [
+                    ("polished HTML", polished_html),
+                    ("rendered HTML", rendered_html),
+                ]
+            )
         for html_type, html_or_loader in html_candidates:
             html = html_or_loader
             if callable(html_or_loader):

@@ -1,5 +1,7 @@
 import argparse
 import base64
+import os
+import subprocess
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Thread
 
@@ -35,7 +37,7 @@ class LocalImagePageHandler(BaseHTTPRequestHandler):
                 <main>
                   <article>
                     <h1>Local image page</h1>
-                    <p>This local article has enough text for readability to parse it as primary content. It includes a small image served by the same test HTTP server so the e2e test can verify whether resources stay external or become embedded data URLs.</p>
+                    <p>This local article has enough text for readability to parse it as primary content. It includes a small image served by the same test HTTP server so the e2e test can verify whether resources stay linked or become embedded data URLs.</p>
                     <p>The page is intentionally self-contained and deterministic. It avoids external network access while still exercising the real browser rendering, readability processing, monolith embedding, and pandoc Markdown conversion paths.</p>
                     <img src=\"/pixel.png\" alt=\"pixel\">
                   </article>
@@ -73,6 +75,61 @@ def _parse_carnivore_args(*extra_args):
             *extra_args,
         ]
     )
+
+
+def test_entrypoint_passes_resource_mode_env(tmp_path):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    args_file = tmp_path / "args.txt"
+    python_path = bin_dir / "python"
+    python_path.write_text(
+        "#!/usr/bin/env bash\n"
+        "printf '%s\n' \"$@\" > \"${CARNIVORE_TEST_ARGS_FILE}\"\n"
+    )
+    python_path.chmod(0o755)
+    env = {
+        **os.environ,
+        "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        "CARNIVORE_TEST_ARGS_FILE": str(args_file),
+        "CARNIVORE_APPLICATION": "fetch",
+        "CARNIVORE_RESOURCE_MODE": "embed",
+    }
+
+    subprocess.run(["./entrypoint.sh", "https://example.com"], check=True, env=env)
+
+    args = args_file.read_text().splitlines()
+    assert args[0] == "applications/fetch/main.py"
+    assert args[args.index("--resource-mode") + 1] == "embed"
+
+
+def test_fetch_wrapper_passes_resource_mode_env(tmp_path):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    args_file = tmp_path / "args.txt"
+    docker_path = bin_dir / "docker"
+    docker_path.write_text(
+        "#!/usr/bin/env bash\n"
+        "printf '%s\n' \"$@\" > \"${CARNIVORE_TEST_ARGS_FILE}\"\n"
+    )
+    docker_path.chmod(0o755)
+    env = {
+        **os.environ,
+        "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        "CARNIVORE_TEST_ARGS_FILE": str(args_file),
+        "CARNIVORE_CACHE": "0",
+        "CARNIVORE_RESOURCE_MODE": "link",
+    }
+
+    subprocess.run(
+        ["skills/carnivore-fetch/bin/carnivore-fetch", "https://example.com"],
+        check=True,
+        env=env,
+    )
+
+    args = args_file.read_text().splitlines()
+    assert args[0] == "run"
+    assert args[args.index("-e") + 1] == "CARNIVORE_APPLICATION=fetch"
+    assert "CARNIVORE_RESOURCE_MODE" in args
 
 
 async def _get_stubbed_outputs(monkeypatch, client, get_embedded_html):
@@ -133,22 +190,30 @@ async def _test_common(
     return output
 
 
-def test_cli_embed_resources_disabled_by_default():
+def test_cli_resource_mode_omits_by_default():
     client = carnivore.Carnivore.from_args(_parse_carnivore_args())
 
-    assert client.embed_resources is False
+    assert client.resource_mode == "omit"
 
 
-def test_cli_embed_resources_can_be_enabled():
+def test_cli_resource_mode_can_link():
     client = carnivore.Carnivore.from_args(
-        _parse_carnivore_args("--embed-resources")
+        _parse_carnivore_args("--resource-mode", "link")
     )
 
-    assert client.embed_resources is True
+    assert client.resource_mode == "link"
+
+
+def test_cli_resource_mode_can_embed():
+    client = carnivore.Carnivore.from_args(
+        _parse_carnivore_args("--resource-mode", "embed")
+    )
+
+    assert client.resource_mode == "embed"
 
 
 @pytest.mark.asyncio
-async def test_default_outputs_do_not_embed_resources(monkeypatch):
+async def test_default_outputs_omit_resources(monkeypatch):
     client = carnivore.Carnivore(carnivore.SUPPORTED_FORMATS, "data")
     embedded_calls = []
 
@@ -166,15 +231,43 @@ async def test_default_outputs_do_not_embed_resources(monkeypatch):
     assert "data:image" not in html
     assert "data:image" not in full_html
     assert "data:image" not in markdown
+    assert "image.jpg" not in html
+    assert "image.jpg" not in full_html
+    assert "image.jpg" not in markdown
     assert len(markdown) < 1000
 
 
 @pytest.mark.asyncio
-async def test_embed_resources_enabled_uses_embedded_html(monkeypatch):
+async def test_link_resource_mode_keeps_resource_links(monkeypatch):
     client = carnivore.Carnivore(
         carnivore.SUPPORTED_FORMATS,
         "data",
-        embed_resources=True,
+        resource_mode="link",
+    )
+
+    async def get_embedded_html(url, html, html_type):
+        return html + '<img src="data:image/png;base64,aaaa">'
+
+    html, full_html, markdown = await _get_stubbed_outputs(
+        monkeypatch,
+        client,
+        get_embedded_html,
+    )
+
+    assert "data:image" not in html
+    assert "data:image" not in full_html
+    assert "data:image" not in markdown
+    assert "image.jpg" in html
+    assert "image.jpg" in full_html
+    assert "image.jpg" in markdown
+
+
+@pytest.mark.asyncio
+async def test_embed_resource_mode_uses_embedded_html(monkeypatch):
+    client = carnivore.Carnivore(
+        carnivore.SUPPORTED_FORMATS,
+        "data",
+        resource_mode="embed",
     )
 
     async def get_embedded_html(url, html, html_type):
@@ -192,27 +285,38 @@ async def test_embed_resources_enabled_uses_embedded_html(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_outputs_e2e_embed_images_only_when_enabled(local_image_page_url):
+async def test_outputs_e2e_handle_images_by_resource_mode(local_image_page_url):
     default_client = carnivore.Carnivore(["full_html"], "data")
+    link_client = carnivore.Carnivore(
+        ["full_html"],
+        "data",
+        resource_mode="link",
+    )
     embed_client = carnivore.Carnivore(
         ["full_html"],
         "data",
-        embed_resources=True,
+        resource_mode="embed",
     )
 
     default_full_html = await default_client._get_full_html_format(local_image_page_url)
+    link_full_html = await link_client._get_full_html_format(local_image_page_url)
     embedded_full_html = await embed_client._get_full_html_format(local_image_page_url)
 
     assert "data:image" not in default_full_html
-    assert "/pixel.png" in default_full_html
+    assert "/pixel.png" not in default_full_html
+    assert "data:image" not in link_full_html
+    assert "/pixel.png" in link_full_html
     assert "data:image/png;base64" in embedded_full_html
     assert "/pixel.png" not in embedded_full_html
 
     default_markdown = await default_client._get_markdown_format(local_image_page_url)
+    link_markdown = await link_client._get_markdown_format(local_image_page_url)
     embedded_markdown = await embed_client._get_markdown_format(local_image_page_url)
 
     assert "data:image" not in default_markdown
-    assert "/pixel.png" in default_markdown
+    assert "/pixel.png" not in default_markdown
+    assert "data:image" not in link_markdown
+    assert "/pixel.png" in link_markdown
     assert "data:image/png;base64" in embedded_markdown
     assert "/pixel.png" not in embedded_markdown
 
@@ -254,10 +358,15 @@ def test_cache_key_includes_runtime_configuration():
         oxylabs_user="user:secret-password",
         oxylabs_js_rendering=True,
     )
+    link_instance = carnivore.Carnivore(
+        carnivore.SUPPORTED_FORMATS,
+        "data",
+        resource_mode="link",
+    )
     embed_instance = carnivore.Carnivore(
         carnivore.SUPPORTED_FORMATS,
         "data",
-        embed_resources=True,
+        resource_mode="embed",
     )
 
     args = ("https://example.com",)
@@ -279,6 +388,12 @@ def test_cache_key_includes_runtime_configuration():
         {},
         oxylabs_instance.get_cache_namespace(),
     )
+    link_key = _generate_key(
+        "_get_rendered_html_from_url",
+        args,
+        {},
+        link_instance.get_cache_namespace(),
+    )
     embed_key = _generate_key(
         "_get_rendered_html_from_url",
         args,
@@ -286,7 +401,7 @@ def test_cache_key_includes_runtime_configuration():
         embed_instance.get_cache_namespace(),
     )
 
-    assert len({default_key, zenrows_key, oxylabs_key, embed_key}) == 4
+    assert len({default_key, zenrows_key, oxylabs_key, link_key, embed_key}) == 5
     assert "secret-api-key" not in str(zenrows_instance.get_cache_namespace())
     assert "secret-password" not in str(oxylabs_instance.get_cache_namespace())
 
