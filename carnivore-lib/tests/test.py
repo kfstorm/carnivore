@@ -140,6 +140,13 @@ def _fake_docker_command_logger(tmp_path):
     docker_path.write_text(
         "#!/usr/bin/env bash\n"
         "printf '%s\n' \"$1\" >> \"${CARNIVORE_TEST_COMMANDS_FILE}\"\n"
+        "if [[ $1 == pull ]]; then\n"
+        "  printf 'pull stdout\\n'\n"
+        "  printf 'pull stderr\\n' >&2\n"
+        "  if [[ ${CARNIVORE_TEST_PULL_FAIL:-} == 1 ]]; then\n"
+        "    exit 42\n"
+        "  fi\n"
+        "fi\n"
     )
     docker_path.chmod(0o755)
     return bin_dir, commands_file
@@ -175,11 +182,61 @@ def test_fetch_wrapper_pulls_at_most_once_per_day_by_default(tmp_path):
 
 def test_fetch_wrapper_pull_env_overrides_daily_policy(tmp_path):
     commands_file, base_env = _fetch_wrapper_test_env(tmp_path)
+    pull_stamp = (
+        tmp_path
+        / "state"
+        / "carnivore-fetch"
+        / "pull-ghcr.io_kfstorm_carnivore_latest.stamp"
+    )
 
     _run_fetch_wrapper({**base_env, "CARNIVORE_PULL": "0"})
+    assert not pull_stamp.exists()
+
     _run_fetch_wrapper({**base_env, "CARNIVORE_PULL": "1"})
 
     assert commands_file.read_text().splitlines() == ["run", "pull", "run"]
+    assert pull_stamp.exists()
+
+
+def test_fetch_wrapper_hides_successful_pull_output(tmp_path):
+    commands_file, base_env = _fetch_wrapper_test_env(tmp_path)
+
+    result = subprocess.run(
+        ["skills/carnivore-fetch/bin/carnivore-fetch", "https://example.com"],
+        check=False,
+        capture_output=True,
+        text=True,
+        env={**base_env, "CARNIVORE_PULL": "1"},
+    )
+
+    assert result.returncode == 0
+    assert commands_file.read_text().splitlines() == ["pull", "run"]
+    assert "pull stdout" not in result.stdout
+    assert "pull stderr" not in result.stderr
+
+
+def test_fetch_wrapper_shows_failed_pull_output(tmp_path):
+    commands_file, base_env = _fetch_wrapper_test_env(tmp_path)
+    pull_stamp = (
+        tmp_path
+        / "state"
+        / "carnivore-fetch"
+        / "pull-ghcr.io_kfstorm_carnivore_latest.stamp"
+    )
+
+    result = subprocess.run(
+        ["skills/carnivore-fetch/bin/carnivore-fetch", "https://example.com"],
+        check=False,
+        capture_output=True,
+        text=True,
+        env={**base_env, "CARNIVORE_PULL": "1", "CARNIVORE_TEST_PULL_FAIL": "1"},
+    )
+
+    assert result.returncode == 42
+    assert commands_file.read_text().splitlines() == ["pull"]
+    assert "pull stdout" in result.stderr
+    assert "pull stderr" in result.stderr
+    assert not pull_stamp.exists()
 
 
 async def _get_stubbed_outputs(monkeypatch, client, get_embedded_html):

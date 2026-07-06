@@ -40,15 +40,34 @@ fi
 
 image=${CARNIVORE_IMAGE:-ghcr.io/kfstorm/carnivore:latest}
 cache_volume=${CARNIVORE_CACHE_VOLUME:-carnivore-cache}
+state_dir=${CARNIVORE_STATE_DIR:-${XDG_STATE_HOME:-${HOME}/.local/state}/carnivore-fetch}
+image_state_name=${image//[^[:alnum:]._-]/_}
+pull_stamp="${state_dir}/pull-${image_state_name}.stamp"
+
+pull_image() {
+  pull_output=$(mktemp)
+  if docker pull "${image}" > "${pull_output}" 2>&1; then
+    rm -f "${pull_output}"
+    return 0
+  else
+    pull_status=$?
+    cat "${pull_output}" >&2
+    rm -f "${pull_output}"
+    return "${pull_status}"
+  fi
+}
+
+update_pull_stamp() {
+  mkdir -p "${state_dir}"
+  printf '%s\n' "${1:-$(date +%s)}" > "${pull_stamp}"
+}
 
 pull_mode=${CARNIVORE_PULL:-daily}
 if [[ ${pull_mode} == "1" ]]; then
-  docker pull "${image}" >&2
+  pull_image
+  update_pull_stamp
 elif [[ ${pull_mode} != "0" ]]; then
   now=$(date +%s)
-  state_dir=${CARNIVORE_STATE_DIR:-${XDG_STATE_HOME:-${HOME}/.local/state}/carnivore-fetch}
-  image_state_name=${image//[^[:alnum:]._-]/_}
-  pull_stamp="${state_dir}/pull-${image_state_name}.stamp"
   last_pull=0
 
   if [[ -r ${pull_stamp} ]]; then
@@ -60,9 +79,8 @@ elif [[ ${pull_mode} != "0" ]]; then
   fi
 
   if (( now < last_pull || now - last_pull >= 86400 )); then
-    docker pull "${image}" >&2
-    mkdir -p "${state_dir}"
-    printf '%s\n' "${now}" > "${pull_stamp}"
+    pull_image
+    update_pull_stamp "${now}"
   fi
 fi
 
