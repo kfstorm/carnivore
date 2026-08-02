@@ -1,0 +1,186 @@
+name: Legacy Image
+
+on:
+  push:
+    tags:
+      - "legacy-*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Legacy tag to build (e.g. legacy-2026-08-02)"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.meta.outputs.image_tag }}
+      manifest_digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - name: Resolve tag
+        id: meta
+        run: |
+          tag="${{ inputs.tag }}"
+          if [[ -z "${tag}" ]]; then
+            tag="${GITHUB_REF_NAME}"
+          fi
+          if [[ ! "${tag}" =~ ^legacy-[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+            echo "Invalid legacy tag: ${tag}" >&2
+            exit 1
+          fi
+          echo "image_tag=${tag}" >> "${GITHUB_OUTPUT}"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.meta.outputs.image_tag }}
+          fetch-depth: 0
+
+      - name: Compute source checksum
+        id: checksum
+        run: |
+          commit="$(git rev-parse HEAD)"
+          checksum="$(git archive HEAD | sha256sum | cut -d' ' -f1)"
+          echo "commit=${commit}" >> "${GITHUB_OUTPUT}"
+          echo "source_checksum=${checksum}" >> "${GITHUB_OUTPUT}"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push legacy image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ghcr.io/kfstorm/carnivore:${{ steps.meta.outputs.image_tag }}
+          provenance: false
+          sbom: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Record platform digests
+        id: digests
+        run: |
+          image="ghcr.io/kfstorm/carnivore:${{ steps.meta.outputs.image_tag }}"
+          docker buildx imagetools inspect "${image}" --format '{{json .Manifest}}' > /tmp/manifest.json
+          amd64="$(jq -r '.manifests[] | select((.platform.architecture == "amd64") and ((.annotations["vnd.docker.reference.type"] // "") != "attestation-manifest")) | .digest' /tmp/manifest.json)"
+          arm64="$(jq -r '.manifests[] | select((.platform.architecture == "arm64") and ((.annotations["vnd.docker.reference.type"] // "") != "attestation-manifest")) | .digest' /tmp/manifest.json)"
+          echo "amd64=${amd64}" >> "${GITHUB_OUTPUT}"
+          echo "arm64=${arm64}" >> "${GITHUB_OUTPUT}"
+
+      - name: Collect component facts
+        id: facts
+        run: |
+          image="ghcr.io/kfstorm/carnivore@${{ steps.build.outputs.digest }}"
+          docker run --rm --entrypoint /bin/bash "${image}" -lc '
+            echo "python_version=$(python --version 2>&1 | sed -E "s/Python //")"
+            echo "node_version=$(node --version)"
+            echo "pandoc_version=$(pandoc --version | head -n 1 | sed -E "s/pandoc //")"
+            echo "monolith_version=$(monolith --version 2>&1 | head -n 1)"
+            echo "playwright_version=$(pip show playwright 2>/dev/null | awk "/^Version:/{print \$2}")"
+          ' | while IFS= read -r line; do
+            echo "${line}" >> "${GITHUB_OUTPUT}"
+          done
+
+      - name: Write evidence summary
+        run: |
+          {
+            echo "## Legacy image ${{ steps.meta.outputs.image_tag }}"
+            echo ""
+            echo "- Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo "- Commit: \`${{ steps.checksum.outputs.commit }}\`"
+            echo "- Source checksum (sha256 of \`git archive\`): \`${{ steps.checksum.outputs.source_checksum }}\`"
+            echo "- Image tag: \`ghcr.io/kfstorm/carnivore:${{ steps.meta.outputs.image_tag }}\`"
+            echo "- Manifest digest: \`${{ steps.build.outputs.digest }}\`"
+            echo "- linux/amd64 digest: \`${{ steps.digests.outputs.amd64 }}\`"
+            echo "- linux/arm64 digest: \`${{ steps.digests.outputs.arm64 }}\`"
+            echo ""
+            echo "### Component facts"
+            echo ""
+            echo "| Component | Version |"
+            echo "| --- | --- |"
+            echo "| Python | ${{ steps.facts.outputs.python_version }} |"
+            echo "| Node | ${{ steps.facts.outputs.node_version }} |"
+            echo "| Pandoc | ${{ steps.facts.outputs.pandoc_version }} |"
+            echo "| monolith | ${{ steps.facts.outputs.monolith_version }} |"
+            echo "| Playwright | ${{ steps.facts.outputs.playwright_version }} |"
+          } | tee -a "${GITHUB_STEP_SUMMARY}" > /tmp/legacy-evidence.md
+
+      - name: Upload evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: legacy-evidence-${{ steps.meta.outputs.image_tag }}
+          path: /tmp/legacy-evidence.md
+
+  smoke-test:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            key: amd64
+            platform: linux/amd64
+          - runner: ubuntu-24.04-arm
+            key: arm64
+            platform: linux/arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Pull image by digest
+        run: |
+          image="ghcr.io/kfstorm/carnivore@${{ needs.build.outputs.manifest_digest }}"
+          docker pull "${image}"
+          echo "image=${image}" >> "${GITHUB_ENV}"
+
+      - name: Run legacy fetch smoke test
+        id: smoke
+        run: |
+          for attempt in 1 2 3; do
+            if output="$(docker run --rm -e CARNIVORE_APPLICATION=fetch "${image}" https://example.com 2>&1)"; then
+              echo "status=passed" >> "${GITHUB_OUTPUT}"
+              printf '%s' "${output}" > /tmp/smoke-output.txt
+              exit 0
+            fi
+            echo "Smoke test attempt ${attempt} failed" >&2
+            sleep 5
+          done
+          echo "status=failed" >> "${GITHUB_OUTPUT}"
+          exit 1
+
+      - name: Write smoke evidence
+        run: |
+          {
+            echo "## Legacy smoke test (${{ matrix.platform }})"
+            echo ""
+            echo "- Runner: \`${{ matrix.runner }}\`"
+            echo "- Image: \`${image}\`"
+            echo "- Result: ${{ steps.smoke.outputs.status }}"
+            echo ""
+            echo '```'
+            cat /tmp/smoke-output.txt
+            echo '```'
+          } | tee -a "${GITHUB_STEP_SUMMARY}" > /tmp/smoke-evidence.md
+
+      - name: Upload smoke evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: legacy-smoke-${{ matrix.key }}
+          path: /tmp/smoke-evidence.md
