@@ -63,6 +63,19 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Reject an existing Legacy image tag
+        run: |
+          image="ghcr.io/kfstorm/carnivore:${{ steps.meta.outputs.image_tag }}"
+          if output="$(docker buildx imagetools inspect "${image}" 2>&1)"; then
+            echo "Image tag ${image} already exists. Refusing to overwrite it." >&2
+            exit 1
+          fi
+          if ! grep -Eqi 'not found|manifest unknown' <<< "${output}"; then
+            echo "Unable to determine whether image tag ${image} exists:" >&2
+            printf '%s\n' "${output}" >&2
+            exit 1
+          fi
+
       - name: Build and push legacy image
         id: build
         uses: docker/build-push-action@v6
