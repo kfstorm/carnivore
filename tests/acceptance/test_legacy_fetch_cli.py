@@ -1,13 +1,14 @@
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).parents[2]
 
 
-def run_fetch(url, *args):
+def run_fetch(url, *args, timeout=None):
     return subprocess.run(
         [
             sys.executable,
@@ -24,6 +25,7 @@ def run_fetch(url, *args):
         env={**os.environ, "CARNIVORE_CACHE": "0"},
         text=True,
         check=False,
+        timeout=timeout,
     )
 
 
@@ -92,3 +94,42 @@ def test_fetch_cli_reports_http_failures_on_stderr(http_error_url):
     assert result.returncode != 0
     assert result.stdout == ""
     assert "Status code: 500" in result.stderr
+
+
+def test_fetch_cli_reports_empty_content_on_stderr(fixture_server):
+    result = run_fetch(f"{fixture_server}/empty")
+
+    assert result.returncode != 0
+    assert result.stdout == ""
+    assert result.stderr
+
+
+def test_fetch_cli_uses_fixed_settle_window_despite_continuous_network_activity(
+    fixture_server,
+):
+    baseline_started_at = time.monotonic()
+    baseline_result = run_fetch(f"{fixture_server}/article")
+    baseline_elapsed = time.monotonic() - baseline_started_at
+
+    assert baseline_result.returncode == 0
+    assert baseline_result.stderr == ""
+
+    started_at = time.monotonic()
+    try:
+        result = run_fetch(
+            f"{fixture_server}/continuous-network", timeout=baseline_elapsed + 0.5
+        )
+    except subprocess.TimeoutExpired as error:
+        elapsed = time.monotonic() - started_at
+        raise AssertionError(
+            "continuous network activity must not extend the two-second settle window "
+            f"(timed out after {elapsed:.2f} seconds)"
+        ) from error
+
+    elapsed = time.monotonic() - started_at
+
+    assert result.returncode == 0
+    assert result.stderr == ""
+    assert "Continuous network fixture" in result.stdout
+    assert elapsed >= 2
+    assert elapsed < baseline_elapsed + 0.5
