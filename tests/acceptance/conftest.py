@@ -1,0 +1,155 @@
+import base64
+import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from threading import Thread
+from urllib.parse import urlsplit
+
+import pytest
+
+
+PIXEL_PNG = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMBAAZnGfoAAAAASUVORK5CYII="
+)
+
+
+def article(title, body, script=""):
+    return f"""<!doctype html>
+<html>
+  <head><title>{title}</title></head>
+  <body>
+    <main>
+      <article>
+        <h1>{title}</h1>
+        <p>{body}</p>
+        <p>The fixture uses stable local HTML so acceptance tests can assert semantic
+        output without depending on external websites or variable page sizes.</p>
+      </article>
+    </main>
+    {script}
+  </body>
+</html>"""
+
+
+class FixtureHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        path = urlsplit(self.path).path
+
+        if path == "/redirect":
+            self.send_response(302)
+            self.send_header("Location", "/article")
+            self.end_headers()
+            return
+
+        if path == "/server-error":
+            self.send_error(500)
+            return
+
+        if path == "/pixel.png":
+            self.send_response(200)
+            self.send_header("Content-Type", "image/png")
+            self.send_header("Content-Length", str(len(PIXEL_PNG)))
+            self.end_headers()
+            self.wfile.write(PIXEL_PNG)
+            return
+
+        if path == "/poll":
+            self.send_response(204)
+            self.end_headers()
+            return
+
+        if path == "/delayed":
+            time.sleep(0.25)
+            content = article(
+                "Delayed fixture article",
+                "This article is served after a deterministic delay.",
+            )
+        elif path == "/javascript-early":
+            content = article(
+                "Early JavaScript fixture",
+                "This article receives additional content shortly after "
+                "DOMContentLoaded.",
+                """<script>
+setTimeout(() => {
+  document.querySelector("article").insertAdjacentHTML(
+    "beforeend", "<p>Early JavaScript fixture content.</p>"
+  );
+}, 100);
+</script>""",
+            )
+        elif path == "/javascript-late":
+            content = article(
+                "Late JavaScript fixture",
+                "This article receives additional content after the fixed settle "
+                "window.",
+                """<script>
+setTimeout(() => {
+  document.querySelector("article").insertAdjacentHTML(
+    "beforeend", "<p>Late JavaScript fixture content.</p>"
+  );
+}, 3000);
+</script>""",
+            )
+        elif path == "/empty":
+            content = "<!doctype html><html><body></body></html>"
+        elif path == "/resources":
+            content = article(
+                "Resource fixture article",
+                "This article contains a local image for resource-mode acceptance "
+                "tests.",
+            ).replace(
+                "</article>", '<img src="/pixel.png" alt="fixture pixel"></article>'
+            )
+        elif path == "/continuous-network":
+            content = article(
+                "Continuous network fixture",
+                "This article keeps making local requests after it is rendered.",
+                "<script>setInterval(() => fetch('/poll'), 100);</script>",
+            )
+        elif path == "/article":
+            content = article(
+                "Static fixture article",
+                "This deterministic local article has enough text for Readability "
+                "to identify it as the primary content. It is served without "
+                "external dependencies so the acceptance suite can exercise the "
+                "existing fetch command through a real browser.",
+            )
+        else:
+            self.send_error(404)
+            return
+
+        encoded_content = content.encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(encoded_content)))
+        self.end_headers()
+        self.wfile.write(encoded_content)
+
+    def log_message(self, format, *args):
+        pass
+
+
+@pytest.fixture
+def fixture_server():
+    server = ThreadingHTTPServer(("127.0.0.1", 0), FixtureHandler)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{server.server_port}"
+    finally:
+        server.shutdown()
+        thread.join()
+
+
+@pytest.fixture
+def static_article_url(fixture_server):
+    return f"{fixture_server}/article"
+
+
+@pytest.fixture
+def redirect_article_url(fixture_server):
+    return f"{fixture_server}/redirect"
+
+
+@pytest.fixture
+def http_error_url(fixture_server):
+    return f"{fixture_server}/server-error"
