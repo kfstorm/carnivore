@@ -77,29 +77,25 @@ def _parse_carnivore_args(*extra_args):
     )
 
 
-def test_entrypoint_passes_resource_mode_env(tmp_path):
+def test_entrypoint_invokes_package_cli(tmp_path):
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     args_file = tmp_path / "args.txt"
     python_path = bin_dir / "python"
     python_path.write_text(
-        "#!/usr/bin/env bash\n"
-        "printf '%s\n' \"$@\" > \"${CARNIVORE_TEST_ARGS_FILE}\"\n"
+        '#!/usr/bin/env bash\nprintf \'%s\n\' "$@" > "${CARNIVORE_TEST_ARGS_FILE}"\n'
     )
     python_path.chmod(0o755)
     env = {
         **os.environ,
         "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
         "CARNIVORE_TEST_ARGS_FILE": str(args_file),
-        "CARNIVORE_APPLICATION": "fetch",
-        "CARNIVORE_RESOURCE_MODE": "embed",
     }
 
     subprocess.run(["./entrypoint.sh", "https://example.com"], check=True, env=env)
 
     args = args_file.read_text().splitlines()
-    assert args[0] == "applications/fetch/main.py"
-    assert args[args.index("--resource-mode") + 1] == "embed"
+    assert args == ["-m", "carnivore", "https://example.com"]
 
 
 def test_fetch_wrapper_passes_resource_mode_env(tmp_path):
@@ -108,8 +104,7 @@ def test_fetch_wrapper_passes_resource_mode_env(tmp_path):
     args_file = tmp_path / "args.txt"
     docker_path = bin_dir / "docker"
     docker_path.write_text(
-        "#!/usr/bin/env bash\n"
-        "printf '%s\n' \"$@\" > \"${CARNIVORE_TEST_ARGS_FILE}\"\n"
+        '#!/usr/bin/env bash\nprintf \'%s\n\' "$@" > "${CARNIVORE_TEST_ARGS_FILE}"\n'
     )
     docker_path.chmod(0o755)
     env = {
@@ -139,7 +134,7 @@ def _fake_docker_command_logger(tmp_path):
     docker_path = bin_dir / "docker"
     docker_path.write_text(
         "#!/usr/bin/env bash\n"
-        "printf '%s\n' \"$1\" >> \"${CARNIVORE_TEST_COMMANDS_FILE}\"\n"
+        'printf \'%s\n\' "$1" >> "${CARNIVORE_TEST_COMMANDS_FILE}"\n'
         "if [[ $1 == pull ]]; then\n"
         "  printf 'pull stdout\\n'\n"
         "  printf 'pull stderr\\n' >&2\n"
@@ -260,7 +255,9 @@ async def _get_stubbed_outputs(monkeypatch, client, get_embedded_html):
     async def get_markdown(html, html_type):
         return html
 
-    monkeypatch.setattr(client, "_get_rendered_html_from_url", get_rendered_html_from_url)
+    monkeypatch.setattr(
+        client, "_get_rendered_html_from_url", get_rendered_html_from_url
+    )
     monkeypatch.setattr(client, "_get_polished_data", get_polished_data)
     monkeypatch.setattr(client, "_get_embedded_html", get_embedded_html)
     monkeypatch.setattr(client, "_get_markdown", get_markdown)
@@ -286,9 +283,9 @@ def carnivore_instance():
 def file_size_check(file_path, min_size):
     with open(file_path, "rb") as f:
         size = len(f.read())
-        assert (
-            size >= min_size
-        ), f"Content of {file_path} is too small. Size: {size}, expected: >={min_size}"
+        assert size >= min_size, (
+            f"Content of {file_path} is too small. Size: {size}, expected: >={min_size}"
+        )
 
 
 async def _test_common(
@@ -377,7 +374,9 @@ async def test_default_markdown_omits_inline_svg_data_uri(monkeypatch):
             "metadata": {},
         }
 
-    monkeypatch.setattr(client, "_get_rendered_html_from_url", get_rendered_html_from_url)
+    monkeypatch.setattr(
+        client, "_get_rendered_html_from_url", get_rendered_html_from_url
+    )
     monkeypatch.setattr(client, "_get_polished_data", get_polished_data)
 
     markdown = await client._get_markdown_format("https://example.com")
@@ -483,7 +482,9 @@ async def test_pdf_always_uses_embedded_full_html(monkeypatch):
     async def get_pdf_from_html(html):
         return html.encode()
 
-    monkeypatch.setattr(client, "_get_rendered_html_from_url", get_rendered_html_from_url)
+    monkeypatch.setattr(
+        client, "_get_rendered_html_from_url", get_rendered_html_from_url
+    )
     monkeypatch.setattr(client, "_get_embedded_html", get_embedded_html)
     monkeypatch.setattr(client, "_get_pdf_from_html", get_pdf_from_html)
 
