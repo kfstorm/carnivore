@@ -29,7 +29,17 @@ async def invoke_command(
         **kwargs,
     )
     atexit.register(kill_child, process)
-    stdout, stderr = await process.communicate(input=input.encode() if input else None)
+    try:
+        stdout, stderr = await process.communicate(
+            input=input.encode() if input else None
+        )
+    finally:
+        atexit.unregister(kill_child)
+        if process.returncode is None:
+            try:
+                process.kill()
+            except Exception:
+                pass
     stderr = stderr.decode().strip()
     if not return_bytes:
         stdout = stdout.decode().strip()
@@ -45,7 +55,7 @@ async def invoke_command(
         raise Exception(message)
     if not no_stderr_warning and stderr:
         logging.warning(
-            f"Subprocess of command {command} succeeded" f" with stderr: {stderr}"
+            f"Subprocess of command {command} succeeded with stderr: {stderr}"
         )
     return stdout
 

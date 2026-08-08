@@ -6,7 +6,13 @@ import sys
 
 from ruamel.yaml import YAML
 
-from .models import FetchRequest, RESOURCE_MODES, SUPPORTED_FORMATS
+from .models import (
+    ERROR_INVALID_INPUT,
+    FetchError,
+    FetchRequest,
+    RESOURCE_MODES,
+    SUPPORTED_FORMATS,
+)
 from .pipeline import fetch
 
 
@@ -25,6 +31,12 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--format", choices=SUPPORTED_FORMATS, default="markdown")
     parser.add_argument("--output", choices=("raw", "json"), default="raw")
     parser.add_argument("--resource-mode", choices=RESOURCE_MODES, default="omit")
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=30.0,
+        help="End-to-end fetch budget in seconds",
+    )
     return parser
 
 
@@ -36,10 +48,14 @@ async def main(argv=None) -> int:
                 url=args.url,
                 format=args.format,
                 resource_mode=args.resource_mode,
+                timeout=args.timeout,
             )
         )
-    except Exception as error:
-        print(f"Failed to fetch URL: {error}", file=sys.stderr)
+    except FetchError as error:
+        print(error, file=sys.stderr)
+        return 2 if error.code == ERROR_INVALID_INPUT else 1
+    except Exception:
+        print("internal_error: unexpected failure", file=sys.stderr)
         return 1
 
     if args.output == "json":

@@ -1,35 +1,65 @@
+import asyncio
 import tempfile
 from urllib.parse import urlsplit
 
 from .lib import Carnivore
-from .models import FetchRequest, FetchResult, RESOURCE_MODES, SUPPORTED_FORMATS
+from .models import (
+    ERROR_INVALID_INPUT,
+    ERROR_NO_CONTENT,
+    ERROR_RESOURCE,
+    ERROR_TIMEOUT,
+    FetchError,
+    FetchRequest,
+    FetchResult,
+    RESOURCE_MODES,
+    SUPPORTED_FORMATS,
+)
+from .render import MAX_OUTPUT_BYTES, render_browser
 
 
 def validate_request(request: FetchRequest) -> None:
     parsed = urlsplit(request.url)
     if parsed.scheme not in ("http", "https") or not parsed.netloc:
-        raise ValueError("URL must be an absolute HTTP(S) URL")
+        raise FetchError(ERROR_INVALID_INPUT, "URL must be an absolute HTTP(S) URL")
     if request.format not in SUPPORTED_FORMATS:
-        raise ValueError(f"Unsupported format: {request.format}")
+        raise FetchError(ERROR_INVALID_INPUT, f"Unsupported format: {request.format}")
     if request.resource_mode not in RESOURCE_MODES:
-        raise ValueError(f"Unsupported resource mode: {request.resource_mode}")
+        raise FetchError(
+            ERROR_INVALID_INPUT, f"Unsupported resource mode: {request.resource_mode}"
+        )
+    if request.timeout <= 0:
+        raise FetchError(ERROR_INVALID_INPUT, "Timeout must be a positive number")
 
 
 class FetchPipeline:
     """Coordinate fetch stages behind the public fetch(request) seam."""
 
     async def fetch(self, request: FetchRequest) -> FetchResult:
+        try:
+            async with asyncio.timeout(request.timeout):
+                return await self._fetch_within_budget(request)
+        except asyncio.TimeoutError:
+            raise FetchError(
+                ERROR_TIMEOUT, f"Timed out after {request.timeout} seconds"
+            )
+
+    async def _fetch_within_budget(self, request: FetchRequest) -> FetchResult:
         validate_request(request)
+        rendered_html = await render_browser(request.url, request.timeout)
         client = Carnivore(
             [request.format],
             tempfile.gettempdir(),
             resource_mode=request.resource_mode,
         )
-        rendered_html = await client._get_rendered_html_from_url(request.url)
-        extracted = await client._get_polished_data(rendered_html)
+        try:
+            extracted = await client._get_polished_data(rendered_html)
+        except Exception:
+            raise FetchError(ERROR_NO_CONTENT, "Fetched content is empty")
         content = await self._convert(client, request, rendered_html, extracted)
         if not content:
-            raise ValueError("Fetched content is empty")
+            raise FetchError(ERROR_NO_CONTENT, "Fetched content is empty")
+        if len(content.encode("utf-8")) > MAX_OUTPUT_BYTES:
+            raise FetchError(ERROR_RESOURCE, "Output too large")
         metadata = {
             key: value
             for key, value in extracted.get("metadata", {}).items()

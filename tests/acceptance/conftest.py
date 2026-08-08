@@ -2,13 +2,19 @@ import base64
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Thread
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
 
 PIXEL_PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMBAAZnGfoAAAAASUVORK5CYII="
+)
+CHUNK_BYTES = b"x" * (10 * 1024 * 1024)
+HUGE_DOCUMENT = (
+    "<!doctype html><html><head><title>Huge document</title></head><body>"
+    + "<!-- filler -->" * 800000
+    + "</body></html>"
 )
 
 
@@ -55,6 +61,34 @@ class FixtureHandler(BaseHTTPRequestHandler):
         if path == "/poll":
             self.send_response(204)
             self.end_headers()
+            return
+
+        if path == "/redirect-loop":
+            remaining = int(parse_qs(urlsplit(self.path).query).get("n", ["0"])[0])
+            if remaining > 1:
+                self.send_response(302)
+                self.send_header("Location", f"/redirect-loop?n={remaining - 1}")
+                self.end_headers()
+                return
+            self.send_response(302)
+            self.send_header("Location", "/article")
+            self.end_headers()
+            return
+
+        if path == "/redirect-file":
+            self.send_response(302)
+            self.send_header("Location", "file:///etc/hostname")
+            self.end_headers()
+            return
+
+        if path == "/redirect-private":
+            self.send_response(302)
+            self.send_header("Location", "http://10.255.255.1/")
+            self.end_headers()
+            return
+
+        if path == "/hang":
+            time.sleep(300)
             return
 
         if path == "/delayed":
@@ -105,6 +139,28 @@ setTimeout(() => {
                 "This article keeps making local requests after it is rendered.",
                 "<script>setInterval(() => fetch('/poll'), 100);</script>",
             )
+        elif path == "/huge-document":
+            content = HUGE_DOCUMENT
+        elif path == "/many-requests":
+            scripts = "".join(f'<script src="/sub/{i}"></script>' for i in range(220))
+            content = f"<!doctype html><html><body>{scripts}</body></html>"
+        elif path == "/transfer":
+            scripts = "".join(f'<script src="/chunk/{i}"></script>' for i in range(6))
+            content = f"<!doctype html><html><body>{scripts}</body></html>"
+        elif path.startswith("/sub/"):
+            self.send_response(200)
+            self.send_header("Content-Type", "application/javascript")
+            self.send_header("Content-Length", "5")
+            self.end_headers()
+            self.wfile.write(b"/*x*/")
+            return
+        elif path.startswith("/chunk/"):
+            self.send_response(200)
+            self.send_header("Content-Type", "application/javascript")
+            self.send_header("Content-Length", str(len(CHUNK_BYTES)))
+            self.end_headers()
+            self.wfile.write(CHUNK_BYTES)
+            return
         elif path == "/article":
             content = article(
                 "Static fixture article",
