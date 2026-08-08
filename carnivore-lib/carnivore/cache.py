@@ -1,7 +1,11 @@
 import hashlib
 import json
 import os
-import pickle
+import uuid
+from functools import wraps
+from pathlib import Path
+
+from .models import SUPPORTED_FORMATS
 
 
 CACHE_SCHEMA_VERSION = 1
@@ -19,56 +23,107 @@ def _generate_key(func_name: str, args: tuple, kwargs: dict, namespace=None) -> 
     return hashlib.md5(key_string.encode()).hexdigest()
 
 
-def _get_cache_file_path(cache_dir: str, key: str) -> str:
-    return os.path.join(cache_dir, f"{key}.pickle")
+def _cache_enabled() -> bool:
+    return os.environ.get("CARNIVORE_CACHE") == "1"
 
 
-def _read_disk_cache(cache_dir: str, key: str):
-    cache_file_path = _get_cache_file_path(cache_dir, key)
-    if not os.path.exists(cache_file_path):
+def _cache_dir() -> Path:
+    configured = os.environ.get("CARNIVORE_CACHE_DIR")
+    if configured:
+        return Path(configured)
+    return Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "carnivore"
+
+
+def _cache_path(key: str) -> Path:
+    return _cache_dir() / f"{key}.json"
+
+
+def _payload_checksum(payload: dict) -> str:
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def read_fetch_result(key: str, result_type):
+    """Read a validated result, treating every cache problem as a miss."""
+    if not _cache_enabled():
         return None
-    with open(cache_file_path, "rb") as cache_file:
-        return pickle.load(cache_file)
+    try:
+        with _cache_path(key).open("r", encoding="utf-8") as cache_file:
+            envelope = json.load(cache_file)
+        if envelope.get("schema_version") != CACHE_SCHEMA_VERSION:
+            return None
+        payload = envelope.get("payload")
+        if not isinstance(payload, dict) or envelope.get("key") != key:
+            return None
+        if envelope.get("payload_sha256") != _payload_checksum(payload):
+            return None
+        if payload.get("format") not in SUPPORTED_FORMATS or not isinstance(
+            payload.get("content"), str
+        ):
+            return None
+        metadata = payload.get("metadata", {})
+        if not isinstance(metadata, dict):
+            return None
+        return result_type(
+            format=payload["format"], content=payload["content"], metadata=metadata
+        )
+    except (OSError, TypeError, ValueError, json.JSONDecodeError):
+        return None
 
 
-def _write_disk_cache(cache_dir: str, key: str, value):
-    os.makedirs(cache_dir, exist_ok=True)
-    cache_file_path = _get_cache_file_path(cache_dir, key)
-    temporary_file_path = f"{cache_file_path}.tmp"
-    with open(temporary_file_path, "wb") as cache_file:
-        pickle.dump(value, cache_file)
-    os.replace(temporary_file_path, cache_file_path)
+def write_fetch_result(key: str, result) -> None:
+    """Atomically persist a result; cache failures must not affect fetching."""
+    if not _cache_enabled():
+        return
+    temporary_file = None
+    try:
+        payload = {
+            "format": result.format,
+            "content": result.content,
+            "metadata": result.metadata,
+        }
+        envelope = {
+            "schema_version": CACHE_SCHEMA_VERSION,
+            "key": key,
+            "payload": payload,
+            "payload_sha256": _payload_checksum(payload),
+        }
+        cache_file = _cache_path(key)
+        cache_file.parent.mkdir(parents=True, exist_ok=True)
+        temporary_file = cache_file.with_name(
+            f".{cache_file.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp"
+        )
+        with temporary_file.open("w", encoding="utf-8") as output:
+            json.dump(envelope, output, ensure_ascii=False, sort_keys=True)
+            output.flush()
+            os.fsync(output.fileno())
+        os.replace(temporary_file, cache_file)
+    except (OSError, TypeError, ValueError):
+        if temporary_file is not None:
+            try:
+                temporary_file.unlink()
+            except OSError:
+                pass
 
 
 def cached():
+    """Keep the pre-contract decorator in memory without reading pickle data."""
+
     def decorator(func):
+        @wraps(func)
         async def wrapper(*args, **kwargs):
-            (func_this, *other_args) = args
-            namespace = None
-            if hasattr(func_this, "get_cache_namespace"):
-                namespace = func_this.get_cache_namespace()
-            key = _generate_key(func.__name__, other_args, kwargs, namespace)
-            value = func_this.cache_store.get(key)
-            if value is None:
-                cache_dir = os.environ.get("CARNIVORE_CACHE_DIR")
-                if os.environ.get("CARNIVORE_CACHE") != "0" and cache_dir:
-                    value = _read_disk_cache(cache_dir, key)
-            if value is None:
-                try:
-                    value = await func(*args, **kwargs)
-                except Exception as e:
-                    value = e
-                func_this.cache_store[key] = value
-                cache_dir = os.environ.get("CARNIVORE_CACHE_DIR")
-                if (
-                    os.environ.get("CARNIVORE_CACHE") != "0"
-                    and cache_dir
-                    and not isinstance(value, Exception)
-                ):
-                    _write_disk_cache(cache_dir, key, value)
-            if isinstance(value, Exception):
-                raise value
-            return value
+            func_this, *other_args = args
+            key = _generate_key(
+                func.__name__,
+                tuple(other_args),
+                kwargs,
+                func_this.get_cache_namespace()
+                if hasattr(func_this, "get_cache_namespace")
+                else None,
+            )
+            if key not in func_this.cache_store:
+                func_this.cache_store[key] = await func(*args, **kwargs)
+            return func_this.cache_store[key]
 
         return wrapper
 

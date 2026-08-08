@@ -1,8 +1,11 @@
 import asyncio
+import hashlib
+import json
 import tempfile
 from urllib.parse import urlsplit
 
 from .lib import Carnivore
+from .cache import read_fetch_result, write_fetch_result
 from .models import (
     ERROR_CONVERSION,
     ERROR_INVALID_INPUT,
@@ -16,6 +19,23 @@ from .models import (
     SUPPORTED_FORMATS,
 )
 from .render import MAX_OUTPUT_BYTES, render_browser
+
+
+PIPELINE_ID = "fetch-pipeline"
+LOADING_STRATEGY_ID = "browser-domcontentloaded-settle-v1"
+
+
+def _cache_key(request: FetchRequest) -> str:
+    key_data = {
+        "pipeline_id": PIPELINE_ID,
+        "url_sha256": hashlib.sha256(request.url.encode("utf-8")).hexdigest(),
+        "format": request.format,
+        "resource_mode": request.resource_mode,
+        "loading_strategy_id": LOADING_STRATEGY_ID,
+    }
+    return hashlib.sha256(
+        json.dumps(key_data, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
 
 
 def validate_request(request: FetchRequest) -> None:
@@ -34,16 +54,22 @@ class FetchPipeline:
     """Coordinate fetch stages behind the public fetch(request) seam."""
 
     async def fetch(self, request: FetchRequest) -> FetchResult:
+        validate_request(request)
+        cache_key = _cache_key(request)
+        cached_result = read_fetch_result(cache_key, FetchResult)
+        if cached_result is not None:
+            return cached_result
         try:
             async with asyncio.timeout(request.timeout):
-                return await self._fetch_within_budget(request)
+                result = await self._fetch_within_budget(request)
         except asyncio.TimeoutError:
             raise FetchError(
                 ERROR_TIMEOUT, f"Timed out after {request.timeout} seconds"
             )
+        write_fetch_result(cache_key, result)
+        return result
 
     async def _fetch_within_budget(self, request: FetchRequest) -> FetchResult:
-        validate_request(request)
         rendered_html = await render_browser(request.url, request.timeout)
         client = Carnivore(
             [request.format],
