@@ -1,5 +1,5 @@
-from .lib import Carnivore, SUPPORTED_FORMATS
-from .models import FetchRequest, FetchResult
+from .lib import Carnivore
+from .models import FetchRequest, FetchResult, SUPPORTED_FORMATS
 from .pipeline import FetchPipeline, fetch
 
 __all__ = [

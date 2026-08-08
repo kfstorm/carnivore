@@ -4,6 +4,7 @@ from urllib.parse import urlsplit
 
 from .lib import Carnivore
 from .models import (
+    ERROR_CONVERSION,
     ERROR_INVALID_INPUT,
     ERROR_NO_CONTENT,
     ERROR_RESOURCE,
@@ -22,11 +23,9 @@ def validate_request(request: FetchRequest) -> None:
     if parsed.scheme not in ("http", "https") or not parsed.netloc:
         raise FetchError(ERROR_INVALID_INPUT, "URL must be an absolute HTTP(S) URL")
     if request.format not in SUPPORTED_FORMATS:
-        raise FetchError(ERROR_INVALID_INPUT, f"Unsupported format: {request.format}")
+        raise FetchError(ERROR_INVALID_INPUT, "Unsupported format")
     if request.resource_mode not in RESOURCE_MODES:
-        raise FetchError(
-            ERROR_INVALID_INPUT, f"Unsupported resource mode: {request.resource_mode}"
-        )
+        raise FetchError(ERROR_INVALID_INPUT, "Unsupported resource mode")
     if request.timeout <= 0:
         raise FetchError(ERROR_INVALID_INPUT, "Timeout must be a positive number")
 
@@ -53,9 +52,18 @@ class FetchPipeline:
         )
         try:
             extracted = await client._get_polished_data(rendered_html)
+        except FetchError:
+            raise
         except Exception:
             raise FetchError(ERROR_NO_CONTENT, "Fetched content is empty")
-        content = await self._convert(client, request, rendered_html, extracted)
+        if not extracted or not extracted.get("html"):
+            raise FetchError(ERROR_NO_CONTENT, "Fetched content is empty")
+        try:
+            content = await self._convert(client, request, rendered_html, extracted)
+        except FetchError:
+            raise
+        except Exception:
+            raise FetchError(ERROR_CONVERSION, "Content conversion failed")
         if not content:
             raise FetchError(ERROR_NO_CONTENT, "Fetched content is empty")
         if len(content.encode("utf-8")) > MAX_OUTPUT_BYTES:
@@ -63,7 +71,7 @@ class FetchPipeline:
         metadata = {
             key: value
             for key, value in extracted.get("metadata", {}).items()
-            if value not in (None, "")
+            if key.lower() != "url" and value not in (None, "")
         }
         return FetchResult(format=request.format, content=content, metadata=metadata)
 

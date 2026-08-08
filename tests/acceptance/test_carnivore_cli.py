@@ -43,3 +43,29 @@ def test_carnivore_module_returns_stable_json(static_article_url):
     assert output["format"] == "markdown"
     assert output["metadata"]["title"] == "Static fixture article"
     assert "This deterministic local article" in output["content"]
+
+
+def test_carnivore_module_reports_json_errors_without_diagnostics(static_article_url):
+    result = run_carnivore(
+        static_article_url,
+        "--format",
+        "pdf",
+        "--output",
+        "json",
+    )
+
+    assert result.returncode == 2
+    assert result.stderr == ""
+    assert json.loads(result.stdout) == {
+        "ok": False,
+        "error": {"code": "invalid_input", "detail": "Unsupported format"},
+    }
+
+
+def test_carnivore_module_reports_raw_errors_on_stderr(static_article_url):
+    result = run_carnivore(static_article_url, "--resource-mode", "bad")
+
+    assert result.returncode == 2
+    assert result.stdout == ""
+    assert result.stderr == "invalid_input: Unsupported resource mode\n"
+    assert static_article_url not in result.stderr

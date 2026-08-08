@@ -18,6 +18,7 @@ async def invoke_command(
     input: str = None,
     no_stderr_warning: bool = False,
     return_bytes: bool = False,
+    max_output_bytes: int = None,
     **kwargs,
 ) -> str:
     # Invoke a command and return the output
@@ -43,6 +44,8 @@ async def invoke_command(
     stderr = stderr.decode().strip()
     if not return_bytes:
         stdout = stdout.decode().strip()
+    if max_output_bytes is not None and len(stdout) > max_output_bytes:
+        raise Exception("Subprocess output exceeded the configured limit")
     if process.returncode != 0:
         message = (
             f"Subprocess of command {command} failed"

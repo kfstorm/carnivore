@@ -15,6 +15,20 @@ ERROR_NO_CONTENT = "no_content"
 ERROR_CONVERSION = "conversion_error"
 ERROR_INTERNAL = "internal_error"
 
+ERROR_CODES = frozenset(
+    (
+        ERROR_INVALID_INPUT,
+        ERROR_NETWORK,
+        ERROR_TIMEOUT,
+        ERROR_HTTP,
+        ERROR_POLICY,
+        ERROR_RESOURCE,
+        ERROR_NO_CONTENT,
+        ERROR_CONVERSION,
+        ERROR_INTERNAL,
+    )
+)
+
 DEFAULT_TIMEOUT = 30.0
 
 

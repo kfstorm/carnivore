@@ -7,11 +7,10 @@ import sys
 from ruamel.yaml import YAML
 
 from .models import (
+    ERROR_INTERNAL,
     ERROR_INVALID_INPUT,
     FetchError,
     FetchRequest,
-    RESOURCE_MODES,
-    SUPPORTED_FORMATS,
 )
 from .pipeline import fetch
 
@@ -28,9 +27,9 @@ def _frontmatter(metadata: dict, content: str) -> str:
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Fetch readable web content")
     parser.add_argument("url", help="Absolute HTTP(S) URL to fetch")
-    parser.add_argument("--format", choices=SUPPORTED_FORMATS, default="markdown")
-    parser.add_argument("--output", choices=("raw", "json"), default="raw")
-    parser.add_argument("--resource-mode", choices=RESOURCE_MODES, default="omit")
+    parser.add_argument("--format", default="markdown")
+    parser.add_argument("--output", default="raw")
+    parser.add_argument("--resource-mode", default="omit")
     parser.add_argument(
         "--timeout",
         type=float,
@@ -42,6 +41,10 @@ def _parser() -> argparse.ArgumentParser:
 
 async def main(argv=None) -> int:
     args = _parser().parse_args(argv)
+    if args.output not in ("raw", "json"):
+        return _report_error(
+            FetchError(ERROR_INVALID_INPUT, "Unsupported output mode"), args.output
+        )
     try:
         result = await fetch(
             FetchRequest(
@@ -52,11 +55,9 @@ async def main(argv=None) -> int:
             )
         )
     except FetchError as error:
-        print(error, file=sys.stderr)
-        return 2 if error.code == ERROR_INVALID_INPUT else 1
+        return _report_error(error, args.output)
     except Exception:
-        print("internal_error: unexpected failure", file=sys.stderr)
-        return 1
+        return _report_error(FetchError(ERROR_INTERNAL), args.output)
 
     if args.output == "json":
         print(
@@ -75,6 +76,22 @@ async def main(argv=None) -> int:
     else:
         print(result.content, end="")
     return 0
+
+
+def _report_error(error: FetchError, output: str) -> int:
+    if output == "json":
+        print(
+            json.dumps(
+                {
+                    "ok": False,
+                    "error": {"code": error.code, "detail": error.message},
+                },
+                ensure_ascii=False,
+            )
+        )
+    else:
+        print(error, file=sys.stderr)
+    return 2 if error.code == ERROR_INVALID_INPUT else 1
 
 
 def run(argv=None) -> int:

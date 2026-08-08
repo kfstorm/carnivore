@@ -5,6 +5,7 @@ import shutil
 from typing import List
 
 from . import util
+from .render import MAX_OUTPUT_BYTES
 from .cache import cached
 import os
 import json
@@ -217,6 +218,7 @@ class Carnivore:
             ],
             input=html,
             no_stderr_warning=True,
+            max_output_bytes=MAX_OUTPUT_BYTES,
         )
 
     def _remove_resources(self, html: str) -> str:
@@ -454,7 +456,9 @@ class Carnivore:
             html_candidates.append(
                 (
                     "embedded HTML",
-                    lambda: self._get_embedded_html(url, polished_html, "polished HTML"),
+                    lambda: self._get_embedded_html(
+                        url, polished_html, "polished HTML"
+                    ),
                 )
             )
         if self.resource_mode == "omit":
@@ -538,7 +542,7 @@ class Carnivore:
                     f.write(format_content)
             else:
                 raise ValueError(
-                    "Unsupported format content data type:" f" {type(format_content)}"
+                    f"Unsupported format content data type: {type(format_content)}"
                 )
             result["files"][format] = output_file_path
         return result
