@@ -174,7 +174,7 @@ jobs:
 
           uncompressed="$(docker image inspect "${image}" --format '{{.Size}}')"
           {
-            echo "# Native ${matrix.platform} smoke evidence"
+            echo "# Native ${{ matrix.platform }} smoke evidence"
             echo
             echo "- Image: \`${image}\`"
             echo "- Uncompressed image bytes: ${uncompressed}"
