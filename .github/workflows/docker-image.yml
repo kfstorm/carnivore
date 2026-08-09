@@ -70,7 +70,7 @@ jobs:
         run: |
           set -euo pipefail
           image="${{ steps.meta.outputs.image }}"
-          manifest="$(docker buildx imagetools inspect "${image}" --format '{{json .Manifest}}')"
+          manifest="$(docker buildx imagetools inspect "${image}" --raw)"
           printf '%s\n' "${manifest}" > /tmp/core-manifest.json
           {
             echo "# Core image baseline"
@@ -85,7 +85,7 @@ jobs:
             echo "| --- | --- | ---: |"
             for platform in amd64 arm64; do
               platform_digest="$(jq -r --arg arch "${platform}" '.manifests[] | select(.platform.os == "linux" and .platform.architecture == $arch) | .digest' /tmp/core-manifest.json)"
-              compressed="$(docker buildx imagetools inspect "${REGISTRY_IMAGE}@${platform_digest}" --format '{{json .Manifest}}' | jq '[.layers[].size] | add')"
+              compressed="$(docker buildx imagetools inspect "${REGISTRY_IMAGE}@${platform_digest}" --raw | jq '[.layers[].size] | add')"
               echo "| linux/${platform} | \`${platform_digest}\` | ${compressed} |"
             done
             echo
@@ -243,9 +243,9 @@ jobs:
           image="${{ needs.build.outputs.image }}@${{ needs.build.outputs.digest }}"
           docker pull --platform linux/amd64 "${image}"
           uncompressed="$(docker image inspect "${image}" --format '{{.Size}}')"
-          manifest="$(docker buildx imagetools inspect "${image}" --format '{{json .Manifest}}')"
+          manifest="$(docker buildx imagetools inspect "${image}" --raw)"
           amd64_digest="$(jq -r '.manifests[] | select(.platform.os == "linux" and .platform.architecture == "amd64") | .digest' <<< "${manifest}")"
-          compressed="$(docker buildx imagetools inspect "${REGISTRY_IMAGE}@${amd64_digest}" --format '{{json .Manifest}}' | jq '[.layers[].size] | add')"
+          compressed="$(docker buildx imagetools inspect "${REGISTRY_IMAGE}@${amd64_digest}" --raw | jq '[.layers[].size] | add')"
           {
             echo "# Initial core image build baseline"
             echo
