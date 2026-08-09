@@ -12,7 +12,13 @@ from benchmark import (  # noqa: E402
 )
 
 
-def _result(median_time=10.0, p95_time=10.0, quality=1.0, size=100):
+def _result(
+    median_time=10.0,
+    p95_time=10.0,
+    quality=1.0,
+    size=100,
+    mode="source",
+):
     quality_metrics = {
         "body_anchor_rate": quality,
         "forbidden_rate": quality,
@@ -26,6 +32,7 @@ def _result(median_time=10.0, p95_time=10.0, quality=1.0, size=100):
         "quality": quality_metrics,
     }
     return {
+        "mode": mode,
         "cases": {"case": deepcopy(case)},
         "runs": 5,
         "schema_version": 1,
@@ -56,6 +63,15 @@ def test_comparison_requires_quality_and_performance_confirmation():
 
     assert comparison["quality_regressions"]
     assert comparison["timing_regressions"]
+    assert comparison["blocking"] is True
+
+
+def test_comparison_rejects_different_execution_modes():
+    comparison = compare_results(_result(mode="image"), _result(mode="source"))
+
+    assert comparison["errors"] == [
+        "benchmark execution mode mismatch: candidate=image, baseline=source"
+    ]
     assert comparison["blocking"] is True
 
 

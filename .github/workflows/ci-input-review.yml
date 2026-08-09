@@ -33,7 +33,7 @@ jobs:
             protected_change=false
             while IFS= read -r file; do
               case "${file}" in
-              Dockerfile|docker/core.lock|benchmarks/corpus.yml|benchmarks/results/stable.json|scripts/benchmark.py|scripts/live-smoke.sh|tests/acceptance/fixture_server.py)
+              Dockerfile|docker/core.lock|benchmarks/corpus.yml|benchmarks/results/*.json|scripts/benchmark.py|scripts/live-smoke.sh|tests/acceptance/fixture_server.py)
                 protected_change=true
                 ;;
               esac

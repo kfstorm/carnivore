@@ -69,7 +69,7 @@ TEMP_DIR=$(mktemp -d)
 trap 'rm -rf "${TEMP_DIR}"' EXIT
 mkdir -p "$(dirname "${EVIDENCE_PATH}")"
 
-cat > "${EVIDENCE_PATH}" << EOF
+cat >"${EVIDENCE_PATH}" <<EOF
 # Live smoke evidence
 
 - Image: \`${IMAGE}\`
@@ -97,11 +97,11 @@ run_page() {
         CARNIVORE_CACHE=0 \
         timeout --kill-after=5s "${TIMEOUT_SECONDS}s" \
         "${WRAPPER}" "${url}" --format markdown --output json \
-        2> "${stderr_path}"
+        2>"${stderr_path}"
     ) && jq -e --arg anchor "${anchor}" \
       'try (.ok == true and (.content | contains($anchor))) catch false' \
-      <<< "${output}" > /dev/null; then
-      printf '| %s | passed | %s |\n' "${page_name}" "${attempt}" >> "${EVIDENCE_PATH}"
+      <<<"${output}" >/dev/null; then
+      printf '| %s | passed | %s |\n' "${page_name}" "${attempt}" >>"${EVIDENCE_PATH}"
       return 0
     fi
     printf 'Live smoke page %s failed attempt %s/3.\n' "${page_name}" "${attempt}" >&2
@@ -111,23 +111,23 @@ run_page() {
   done
 
   printf '| %s | failed after 3 consecutive failures | 3 |\n' "${page_name}" \
-    >> "${EVIDENCE_PATH}"
+    >>"${EVIDENCE_PATH}"
   return 1
 }
 
 failures=0
-run_page "static" \
-  "https://jhftss.github.io/A-New-Era-of-macOS-Sandbox-Escapes/" \
-  "macOS Sandbox" || failures=$((failures + 1))
-run_page "dynamic" \
-  "https://www.rfleury.com/p/demystifying-debuggers-part-2-the" \
-  "Demystifying" || failures=$((failures + 1))
-run_page "wechat" \
-  "https://mp.weixin.qq.com/s/koaLJvsFLkfi_j3HKIi6Dw" \
-  "Rust" || failures=$((failures + 1))
+run_page "homepage" \
+  "https://www.gov.cn/" \
+  "中国政府网" || failures=$((failures + 1))
+run_page "policy-list" \
+  "https://www.gov.cn/zhengce/" \
+  "政策" || failures=$((failures + 1))
+run_page "article" \
+  "https://www.gov.cn/yaowen/liebiao/202608/content_7077748.htm" \
+  "使命担当" || failures=$((failures + 1))
 
 if [[ -n ${GITHUB_STEP_SUMMARY:-} ]]; then
-  cat "${EVIDENCE_PATH}" >> "${GITHUB_STEP_SUMMARY}"
+  cat "${EVIDENCE_PATH}" >>"${GITHUB_STEP_SUMMARY}"
 fi
 
 if [[ ${failures} -gt 0 ]]; then

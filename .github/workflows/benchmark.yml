@@ -152,10 +152,14 @@ jobs:
           source_commit="$(git rev-parse HEAD)"
           result_path="${RUNNER_TEMP}/benchmark-result.json"
           log_path="${RUNNER_TEMP}/benchmark-result.log"
+          baseline_path=benchmarks/results/stable.json
+          if [[ -n "${BENCHMARK_IMAGE}" ]]; then
+            baseline_path=benchmarks/results/stable-image.json
+          fi
           args=(
             --corpus benchmarks/corpus.yml
             --runs 5
-            --baseline benchmarks/results/stable.json
+            --baseline "${baseline_path}"
             --out "${result_path}"
             --version "${source_commit}-${label}"
             --strict

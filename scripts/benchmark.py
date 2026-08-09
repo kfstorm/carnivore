@@ -26,6 +26,7 @@ QUALITY_FIELDS = (
     "structure_rate",
     "metadata_rate",
 )
+BENCHMARK_MODES = ("source", "image")
 
 
 def percentile(values: list[float], probability: float) -> float:
@@ -230,6 +231,7 @@ def run_benchmark(cases: list[dict], runs: int, image: str | None = None) -> dic
             "failures": sum("error" in sample for sample in case_samples),
         }
     return {
+        "mode": "image" if image else "source",
         "schema_version": 1,
         "runs": runs,
         "cases": case_results,
@@ -258,6 +260,28 @@ def compare_results(candidate: dict, baseline: dict) -> dict:
         "review_required": False,
         "blocking": False,
     }
+    candidate_mode = candidate.get("mode")
+    baseline_mode = baseline.get("mode")
+    if candidate_mode not in BENCHMARK_MODES:
+        _comparison_error(
+            comparison,
+            f"candidate benchmark mode is missing or invalid: {candidate_mode!r}",
+        )
+    if baseline_mode not in BENCHMARK_MODES:
+        _comparison_error(
+            comparison,
+            f"baseline benchmark mode is missing or invalid: {baseline_mode!r}",
+        )
+    if (
+        candidate_mode in BENCHMARK_MODES
+        and baseline_mode in BENCHMARK_MODES
+        and candidate_mode != baseline_mode
+    ):
+        _comparison_error(
+            comparison,
+            "benchmark execution mode mismatch: "
+            f"candidate={candidate_mode}, baseline={baseline_mode}",
+        )
     baseline_cases = baseline.get("cases", {})
     for case_id, candidate_case in candidate.get("cases", {}).items():
         baseline_case = baseline_cases.get(case_id)

@@ -10,8 +10,8 @@ if [[ -z ${BASE_COMMIT} ]]; then
   echo "Usage: $0 BASE_COMMIT [HEAD_COMMIT]" >&2
   exit 2
 fi
-git rev-parse --verify "${BASE_COMMIT}^{commit}" > /dev/null
-git rev-parse --verify "${HEAD_COMMIT}^{commit}" > /dev/null
+git rev-parse --verify "${BASE_COMMIT}^{commit}" >/dev/null
+git rev-parse --verify "${HEAD_COMMIT}^{commit}" >/dev/null
 
 mapfile -t changed_files < <(git diff --name-only "${BASE_COMMIT}...${HEAD_COMMIT}")
 protected_files=()
@@ -20,8 +20,8 @@ other_files=()
 
 for file in "${changed_files[@]}"; do
   case ${file} in
-  Dockerfile | docker/core.lock | benchmarks/corpus.yml | benchmarks/results/stable.json | scripts/benchmark.py | tests/acceptance/fixture_server.py)
-    if git cat-file -e "${BASE_COMMIT}:${file}" 2> /dev/null; then
+  Dockerfile | docker/core.lock | benchmarks/corpus.yml | benchmarks/results/*.json | scripts/benchmark.py | tests/acceptance/fixture_server.py)
+    if git cat-file -e "${BASE_COMMIT}:${file}" 2>/dev/null; then
       protected_files+=("${file}")
     else
       initial_files+=("${file}")

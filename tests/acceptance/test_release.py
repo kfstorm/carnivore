@@ -182,6 +182,7 @@ def test_release_packager_publishes_pinned_assets_and_manifest(tmp_path):
 def test_release_workflows_publish_and_promote_without_rebuilding():
     acceptance = (PROJECT_ROOT / ".github/workflows/release-acceptance.yml").read_text()
     promotion = (PROJECT_ROOT / ".github/workflows/release-promotion.yml").read_text()
+    smoke = (PROJECT_ROOT / "scripts/live-smoke.sh").read_text()
 
     assert '"v*-rc*"' in acceptance
     assert "docker buildx imagetools create" in acceptance
@@ -189,10 +190,24 @@ def test_release_workflows_publish_and_promote_without_rebuilding():
     assert "actions/attest-build-provenance" in acceptance
     assert "concurrency:" in acceptance
     assert "group: carnivore-release-candidate" in acceptance
+    assert "publish_rc:" in acceptance
+    assert "Validation-only run for" in acceptance
+    assert "image_kind=validation" in acceptance
+    assert (
+        "if: ${{ needs.release-gate.result == 'success' && "
+        "(github.event_name == 'push' || inputs.publish_rc) }}"
+    ) in acceptance
     assert "Verify promoted RC tag" in acceptance
     assert "--format '{{json .Manifest}}'" in acceptance
     assert "pandoc/actions/setup" not in acceptance
     assert "PANDOC_SHA256_ARM64" in acceptance
+    assert "LIBSSL1_1_SHA256_ARM64" in acceptance
+    assert "dpkg --unpack /tmp/libssl1.1.deb" in acceptance
+    assert "https://www.gov.cn/" in smoke
+    assert "https://www.gov.cn/zhengce/" in smoke
+    assert "content_7077748.htm" in smoke
+    assert "rfleury.com" not in smoke
+    assert "mp.weixin.qq.com" not in smoke
     assert acceptance.index("Reject an existing GitHub release") < acceptance.index(
         "Promote validated digest to exact RC tag"
     )

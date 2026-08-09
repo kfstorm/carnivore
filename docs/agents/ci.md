@@ -23,19 +23,22 @@ workflow.
 
 ## Live Smoke
 
-The smoke script checks three fixed public pages: a static GitHub Pages article,
-a dynamic Substack article, and a WeChat article. Each page is attempted once
-and retried twice after failure. A page is reported as a failure only after all
-three attempts fail consecutively. Evidence contains page names and statuses,
-not page bodies or diagnostics.
+The smoke script checks three fixed public pages on `www.gov.cn`: the homepage,
+the policy listing, and a dated article page. The pages are deliberately stable
+public HTML inputs that stay within the renderer's SSRF and subresource bounds.
+Each page is attempted once and retried twice after failure. A page is reported
+as a failure only after all three attempts fail consecutively. Evidence contains
+page names and statuses, not page bodies or diagnostics.
 
 ## Benchmarks
 
 `benchmarks/corpus.yml` is a versioned local corpus served by
 `tests/acceptance/fixture_server.py`. Every case runs five times. Each result
 records output size, body-anchor, forbidden-noise, structure, and metadata pass
-rates, plus total median and p95 duration. The comparison uses
-`benchmarks/results/stable.json` as the previous stable baseline.
+rates, plus total median and p95 duration. Source benchmarks compare with
+`benchmarks/results/stable.json`; image benchmarks compare with
+`benchmarks/results/stable-image.json`. Baselines declare their execution mode,
+and comparisons never mix source and image timings.
 
 Strict comparison rules are:
 
@@ -95,6 +98,12 @@ Push an annotated `vMAJOR.MINOR.PATCH-rc.N` tag to run release acceptance. The
 workflow builds and validates one candidate digest, promotes that digest to
 the exact RC image tag, and publishes versioned wrapper, installer, Skill,
 checksum, SPDX, provenance, and manifest assets.
+
+To run the same remote acceptance without creating an RC, dispatch `Release
+Acceptance` with a branch or commit ref and leave `publish_rc` false. This mode
+pushes only a run-scoped `validation-<run-id>` image and skips the RC tag,
+GitHub release, and release-asset publication. Set `publish_rc` to true only
+when dispatching a valid RC tag.
 
 Run `Promote Stable Release` manually with the verified RC tag and a new
 `vMAJOR.MINOR.PATCH` tag. It rejects existing immutable names, creates the

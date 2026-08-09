@@ -1,10 +1,9 @@
 {
-  "mode": "source",
   "cases": {
     "article-markdown-omit": {
       "duration_seconds": {
-        "median": 2.973101651063189,
-        "p95": 2.990817423746921
+        "median": 3.3706176079576835,
+        "p95": 3.394198795990087
       },
       "failures": 0,
       "output_bytes": {
@@ -20,8 +19,8 @@
     },
     "javascript-early-markdown-omit": {
       "duration_seconds": {
-        "median": 2.9798154660966247,
-        "p95": 3.0061454565729946
+        "median": 3.3993444199441,
+        "p95": 3.618090484989807
       },
       "failures": 0,
       "output_bytes": {
@@ -37,8 +36,8 @@
     },
     "redirect-html-omit": {
       "duration_seconds": {
-        "median": 2.972293218015693,
-        "p95": 3.0177034876309334
+        "median": 3.3612338030943647,
+        "p95": 3.426899350830354
       },
       "failures": 0,
       "output_bytes": {
@@ -54,8 +53,8 @@
     },
     "resources-full-html-embed": {
       "duration_seconds": {
-        "median": 3.005339719937183,
-        "p95": 3.035832337010652
+        "median": 3.4057631040923297,
+        "p95": 3.423244384676218
       },
       "failures": 0,
       "output_bytes": {
@@ -71,8 +70,8 @@
     },
     "resources-html-link": {
       "duration_seconds": {
-        "median": 2.9640617839759216,
-        "p95": 2.990354290208779
+        "median": 3.3682532489765435,
+        "p95": 3.391238996828906
       },
       "failures": 0,
       "output_bytes": {
@@ -87,12 +86,13 @@
       }
     }
   },
+  "mode": "image",
   "runs": 5,
   "schema_version": 1,
   "totals": {
     "duration_seconds": {
-      "median": 14.881064892979339,
-      "p95": 14.977656102948822
+      "median": 16.926008422044106,
+      "p95": 17.173039738438092
     },
     "failures": 0,
     "quality": {
@@ -102,5 +102,5 @@
       "structure_rate": 1.0
     }
   },
-  "version": "stable-0.1.0"
+  "version": "stable-image-15be6da5"
 }

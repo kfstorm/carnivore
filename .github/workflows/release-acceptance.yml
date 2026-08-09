@@ -7,10 +7,15 @@ on:
   workflow_dispatch:
     inputs:
       ref:
-        description: "Git ref to validate"
+        description: "Git ref to validate (defaults to the dispatch ref)"
         required: false
         default: ""
         type: string
+      publish_rc:
+        description: "Publish a verified RC (manual dispatch only; defaults to validation-only)"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -46,12 +51,17 @@ jobs:
         env:
           REQUESTED_REF: ${{ inputs.ref }}
           EVENT_REF: ${{ github.ref_name }}
+          PUBLISH_RC: ${{ github.event_name == 'push' || inputs.publish_rc }}
         run: |
           set -euo pipefail
           tag="${REQUESTED_REF:-${EVENT_REF}}"
           tag="${tag##*/}"
-          python scripts/release.py validate-tag --tag "${tag}" --channel rc
-          echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
+          if [[ "${PUBLISH_RC}" == "true" ]]; then
+            python scripts/release.py validate-tag --tag "${tag}" --channel rc
+            echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
+          else
+            echo "Validation-only run for ${tag}"
+          fi
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -68,9 +78,19 @@ jobs:
 
       - name: Set candidate image
         id: meta
-        run: echo "image=${REGISTRY_IMAGE}:rc-${GITHUB_RUN_ID}" >> "${GITHUB_OUTPUT}"
+        env:
+          PUBLISH_RC: ${{ github.event_name == 'push' || inputs.publish_rc }}
+        run: |
+          set -euo pipefail
+          if [[ "${PUBLISH_RC}" == "true" ]]; then
+            image_kind=rc
+          else
+            image_kind=validation
+          fi
+          echo "image=${REGISTRY_IMAGE}:${image_kind}-${GITHUB_RUN_ID}" >> "${GITHUB_OUTPUT}"
 
       - name: Set exact release image
+        if: ${{ steps.release.outputs.tag != '' }}
         run: echo "RELEASE_IMAGE=${REGISTRY_IMAGE}:${{ steps.release.outputs.tag }}" >> "${GITHUB_ENV}"
 
       - name: Record candidate source commit
@@ -92,6 +112,7 @@ jobs:
           fi
 
       - name: Reject an existing exact release tag
+        if: ${{ steps.release.outputs.tag != '' }}
         run: |
           set -euo pipefail
           if output="$(docker buildx imagetools inspect "${RELEASE_IMAGE}" 2>&1)"; then
@@ -119,9 +140,15 @@ jobs:
           cache-to: type=gha,mode=max,scope=release-candidate
 
       - name: Record candidate evidence
+        env:
+          PUBLISH_RC: ${{ github.event_name == 'push' || inputs.publish_rc }}
         run: |
           {
-            echo "# Release candidate image"
+            if [[ "${PUBLISH_RC}" == "true" ]]; then
+              echo "# Release candidate image"
+            else
+              echo "# Validation-only candidate image"
+            fi
             echo
             echo "- Commit: \`${{ steps.source.outputs.commit }}\`"
             echo "- Image: \`${{ steps.meta.outputs.image }}\`"
@@ -231,6 +258,12 @@ jobs:
           else
             monolith_arch=aarch64
             monolith_sha256="${MONOLITH_SHA256_ARM64}"
+            libssl_url="${LIBSSL1_1_DOWNLOAD_BASE}/libssl1.1_${LIBSSL1_1_VERSION}_arm64.deb"
+            curl -fsSL \
+              "${libssl_url}" \
+              -o /tmp/libssl1.1.deb
+            printf '%s  %s\n' "${LIBSSL1_1_SHA256_ARM64}" /tmp/libssl1.1.deb | sha256sum -c -
+            sudo dpkg --unpack /tmp/libssl1.1.deb
           fi
           curl -fsSL \
             "${MONOLITH_DOWNLOAD_BASE}/v${MONOLITH_VERSION}/monolith-gnu-linux-${monolith_arch}" \
@@ -397,6 +430,7 @@ jobs:
 
   publish-rc:
     needs: [build-candidate, offline-native, live-smoke, benchmark-gate, release-gate]
+    if: ${{ needs.release-gate.result == 'success' && (github.event_name == 'push' || inputs.publish_rc) }}
     permissions:
       contents: write
       packages: write
