@@ -19,7 +19,7 @@ env:
   REGISTRY_IMAGE: ghcr.io/kfstorm/carnivore
 
 concurrency:
-  group: carnivore-release-${{ inputs.rc_tag }}
+  group: carnivore-stable-release
   cancel-in-progress: false
 
 jobs:

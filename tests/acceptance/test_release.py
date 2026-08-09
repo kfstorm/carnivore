@@ -198,6 +198,7 @@ def test_release_workflows_publish_and_promote_without_rebuilding():
     assert "docker/build-push-action" not in promotion
     assert "git tag -a" in promotion
     assert "concurrency:" in promotion
+    assert "group: carnivore-stable-release" in promotion
     assert promotion.index(
         "Reject an existing stable GitHub release"
     ) < promotion.index("Promote the verified digest without rebuilding")
