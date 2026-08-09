@@ -178,6 +178,10 @@ def _full_docker_command_logger(tmp_path):
         "  printf 'host network is not supported\\n' >&2\n"
         "  exit 125\n"
         "fi\n"
+        "if [[ ${CARNIVORE_TEST_DOCKER_FAIL:-} == 1 ]]; then\n"
+        "  printf 'image not found\\n' >&2\n"
+        "  exit 125\n"
+        "fi\n"
     )
     docker_path.chmod(0o755)
     return bin_dir, args_file
@@ -234,6 +238,8 @@ def test_fetch_wrapper_applies_hardened_bridge_defaults(tmp_path):
         "https://127.0.0.1:8443/article",
         "http://127.0.0.2:8080/article",
         "https://[::1]:8443/article",
+        "http://[0::1]:8080/article",
+        "http://[0:0:0:0:0:0:0:1]:8080/article",
     ],
 )
 def test_fetch_wrapper_uses_host_network_without_rewriting_loopback_url(tmp_path, url):
@@ -262,6 +268,24 @@ def test_fetch_wrapper_rejects_network_overrides(tmp_path, docker_args):
         "invalid_input: CARNIVORE_DOCKER_ARGS cannot override network mode\n"
     )
     assert url not in result.stderr
+    assert not args_file.exists()
+
+
+@pytest.mark.parametrize(
+    "docker_args",
+    ["--privileged", "--user 0", "--cap-add SYS_ADMIN", "--read-only=false"],
+)
+def test_fetch_wrapper_rejects_security_overrides(tmp_path, docker_args):
+    args_file, env = _full_fetch_wrapper_test_env(tmp_path)
+    env["CARNIVORE_DOCKER_ARGS"] = docker_args
+
+    result = _run_full_fetch_wrapper(env)
+
+    assert result.returncode == 2
+    assert result.stdout == ""
+    assert result.stderr == (
+        "invalid_input: CARNIVORE_DOCKER_ARGS cannot override container security\n"
+    )
     assert not args_file.exists()
 
 
@@ -314,6 +338,18 @@ def test_fetch_wrapper_desensitizes_host_network_failure(tmp_path):
     assert "host.docker.internal" not in result.stderr
     args = _read_docker_args(args_file)
     assert args[args.index("--network") + 1] == "host"
+
+
+def test_fetch_wrapper_preserves_unrelated_docker_start_failure(tmp_path):
+    args_file, env = _full_fetch_wrapper_test_env(tmp_path)
+    env["CARNIVORE_TEST_DOCKER_FAIL"] = "1"
+
+    result = _run_full_fetch_wrapper(env, "http://localhost:8080/article")
+
+    assert result.returncode == 125
+    assert result.stdout == ""
+    assert result.stderr == "image not found\n"
+    assert args_file.exists()
 
 
 def test_fetch_wrapper_pulls_at_most_once_per_day_by_default(tmp_path):

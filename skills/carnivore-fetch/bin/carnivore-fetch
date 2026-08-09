@@ -22,7 +22,8 @@ Environment:
   CARNIVORE_IMAGE=IMAGE             Override the Docker image. Default: official Carnivore image.
   CARNIVORE_PULL=0|1                Control Docker image pulls. Default: pull at most once per day.
   CARNIVORE_STATE_DIR=DIR           State directory for pull timestamps. Default: XDG state directory.
-  CARNIVORE_DOCKER_ARGS=ARGS        Extra docker run arguments. Default: none.
+  CARNIVORE_DOCKER_ARGS=ARGS        Extra resource docker run arguments. Network and
+                                    security overrides are rejected.
   CARNIVORE_RESOURCE_MODE=MODE      Same as --resource-mode. Values: omit, link, embed.
   CARNIVORE_ZENROWS_API_KEY         Pass Zenrows API key. Default: unset.
   CARNIVORE_ZENROWS_PREMIUM_PROXIES Pass Zenrows premium proxy flag. Default: unset.
@@ -72,7 +73,15 @@ is_loopback_url() {
   fi
   host=$(printf '%s' "${host}" | tr '[:upper:]' '[:lower:]')
 
-  [[ ${host} == localhost || ${host} == ::1 ]] || is_ipv4_loopback "${host}"
+  [[ ${host} == localhost ]] || is_ipv6_loopback "${host}" || is_ipv4_loopback "${host}"
+}
+
+is_ipv6_loopback() {
+  local host=$1
+
+  [[ ${host} == ::1 ]] ||
+    [[ ${host} =~ ^(0{1,4}:){1,6}:0{0,3}1$ ]] ||
+    [[ ${host} =~ ^(0{1,4}:){7}0{0,3}1$ ]]
 }
 
 extra_docker_args=()
@@ -85,6 +94,12 @@ for extra_arg in "${extra_docker_args[@]}"; do
   case ${extra_arg} in
   --network | --network=* | --net | --net=*)
     echo "invalid_input: CARNIVORE_DOCKER_ARGS cannot override network mode" >&2
+    exit 2
+    ;;
+  --privileged | --privileged=* | --user | --user=* | -u | --cap-add | --cap-add=* | \
+    --cap-drop | --cap-drop=* | --security-opt | --security-opt=* | --read-only | \
+    --read-only=* | --userns | --userns=*)
+    echo "invalid_input: CARNIVORE_DOCKER_ARGS cannot override container security" >&2
     exit 2
     ;;
   esac
@@ -203,9 +218,7 @@ for env_name in \
   fi
 done
 
-if [[ -n ${CARNIVORE_DOCKER_ARGS:-} ]]; then
-  # shellcheck disable=SC2206
-  extra_docker_args=(${CARNIVORE_DOCKER_ARGS})
+if ((${#extra_docker_args[@]} > 0)); then
   docker_args+=("${extra_docker_args[@]}")
 fi
 
@@ -217,12 +230,13 @@ if [[ ${network_mode} == host ]]; then
     cat "${run_output_dir}/stderr" >&2
     rm -rf "${run_output_dir}"
     exit 0
+  else
+    run_status=$?
   fi
 
-  run_status=$?
   run_error=$(< "${run_output_dir}/stderr")
   lower_run_error=$(printf '%s' "${run_error}" | tr '[:upper:]' '[:lower:]')
-  if ((run_status == 125)) || [[ ${lower_run_error} == *"host network"* ]] ||
+  if [[ ${lower_run_error} == *"host network"* ]] ||
     [[ ${lower_run_error} == *"network host"* ]] ||
     [[ ${lower_run_error} == *"host networking"* ]] ||
     [[ ${lower_run_error} == *"host"* && ${lower_run_error} == *"not supported"* ]] ||

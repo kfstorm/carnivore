@@ -94,7 +94,7 @@ The first run may be slow because Docker needs to pull the image.
 
 The wrapper uses a named Docker volume named `carnivore-cache` when `CARNIVORE_CACHE=1`, so repeated fetches of the same URL can reuse expensive browser rendering and conversion results. Cache is disabled by default.
 
-For an initial URL whose host is literally `localhost`, an IPv4 loopback address, or an IPv6 loopback address, the wrapper uses Docker host networking so the URL, `Host` header, and TLS connection remain unchanged. Other URLs use bridge networking. If host networking is unavailable or disabled, loopback fetches fail instead of rewriting the address or falling back to a proxy. The wrapper also applies non-root, read-only, dropped-capability, no-new-privileges, temporary-filesystem, CPU, memory, PID, and private-cache-volume defaults. `CARNIVORE_DOCKER_ARGS` may override resource limits but cannot override the network mode.
+For an initial URL whose host is literally `localhost`, an IPv4 loopback address, or an IPv6 loopback address, the wrapper uses Docker host networking so the URL, `Host` header, and TLS connection remain unchanged. Other URLs use bridge networking. If host networking is unavailable or disabled, loopback fetches fail instead of rewriting the address or falling back to a proxy. The wrapper also applies non-root, read-only, dropped-capability, no-new-privileges, temporary-filesystem, CPU, memory, PID, and private-cache-volume defaults. `CARNIVORE_DOCKER_ARGS` may override resource limits but cannot override the network or container security mode.
 
 Carnivore uses `--resource-mode omit` by default, which removes image, media, and embedded resource elements from Markdown and HTML outputs. This keeps output focused for scripts and LLM agents by avoiding resource links. Set `--resource-mode link` to keep original resource links, or `--resource-mode embed` when using Carnivore for webpage archiving and you need self-contained Markdown or HTML output. PDF generation always embeds resources internally so relative images and styles still work from the temporary local HTML file.
 
@@ -126,7 +126,7 @@ Wrapper options and environment variables:
 | `CARNIVORE_IMAGE` | Uses the official Carnivore image. Set it to override the image. |
 | `CARNIVORE_PULL` | Pulls the Docker image at most once per day. Set `CARNIVORE_PULL=1` to pull every run, or `CARNIVORE_PULL=0` to skip pulling. |
 | `CARNIVORE_STATE_DIR` | Stores pull timestamps under the XDG state directory. Set it to override the state directory. |
-| `CARNIVORE_DOCKER_ARGS` | Passes extra Docker arguments. Network mode overrides are rejected; resource overrides such as `--cpus` and `--memory` remain possible. |
+| `CARNIVORE_DOCKER_ARGS` | Passes extra Docker arguments. Network and container-security overrides are rejected; resource overrides such as `--cpus` and `--memory` remain possible. |
 | `CARNIVORE_RESOURCE_MODE` | Uses `omit`. Set to `link` to keep resource links or `embed` for self-contained archive output. PDF generation embeds internally. |
 | `CARNIVORE_ZENROWS_API_KEY` | Not passed unless set on the host. |
 | `CARNIVORE_ZENROWS_PREMIUM_PROXIES` | Not passed unless set on the host. |
