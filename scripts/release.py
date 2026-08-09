@@ -25,8 +25,13 @@ REPOSITORY = "ghcr.io/kfstorm/carnivore"
 GITHUB_RELEASE_BASE = "https://github.com/kfstorm/carnivore/releases/download"
 SHA256_PATTERN = re.compile(r"^sha256:[0-9a-f]{64}$")
 COMMIT_PATTERN = re.compile(r"^[0-9a-f]{40}$")
-STABLE_TAG_PATTERN = re.compile(r"^v[0-9]+\.[0-9]+\.[0-9]+$")
-RC_TAG_PATTERN = re.compile(r"^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$")
+SEMVER_NUMBER = r"(?:0|[1-9][0-9]*)"
+STABLE_TAG_PATTERN = re.compile(
+    rf"^v{SEMVER_NUMBER}\.{SEMVER_NUMBER}\.{SEMVER_NUMBER}$"
+)
+RC_TAG_PATTERN = re.compile(
+    rf"^v{SEMVER_NUMBER}\.{SEMVER_NUMBER}\.{SEMVER_NUMBER}" rf"-rc\.{SEMVER_NUMBER}$"
+)
 
 
 @dataclass(frozen=True)
@@ -378,6 +383,13 @@ def package_release(
     _require_digest(digest, "digest")
     if not image.startswith(f"{REPOSITORY}:") or not image.endswith(f":{tag}"):
         raise ValueError("image must use the exact release tag")
+    if not isinstance(platform_digests, dict):
+        raise ValueError("platform digests must be a JSON object of strings")
+    if any(
+        not isinstance(platform, str) or not isinstance(platform_digest, str)
+        for platform, platform_digest in platform_digests.items()
+    ):
+        raise ValueError("platform digests must be a JSON object of strings")
     platforms = []
     for platform, platform_digest in sorted(platform_digests.items()):
         if platform not in ("linux/amd64", "linux/arm64"):

@@ -127,6 +127,22 @@ jobs:
             exit 1
           fi
 
+      - name: Reject an existing stable GitHub release
+        env:
+          STABLE_TAG: ${{ inputs.stable_tag }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${STABLE_TAG}" \
+            > "${RUNNER_TEMP}/stable-release.json" 2> "${RUNNER_TEMP}/stable-release-error"; then
+            echo "GitHub release already exists: ${STABLE_TAG}" >&2
+            exit 1
+          fi
+          if ! grep -Eqi '404|not found' "${RUNNER_TEMP}/stable-release-error"; then
+            cat "${RUNNER_TEMP}/stable-release-error" >&2
+            exit 1
+          fi
+
       - name: Promote the verified digest without rebuilding
         env:
           RC_IMAGE: ${{ steps.image.outputs.image }}
@@ -138,6 +154,21 @@ jobs:
             --tag "${REGISTRY_IMAGE}:${STABLE_TAG}" \
             --tag "${REGISTRY_IMAGE}:latest" \
             "${RC_IMAGE}@${RC_DIGEST}"
+
+      - name: Verify promoted image tags
+        env:
+          STABLE_TAG: ${{ inputs.stable_tag }}
+          EXPECTED_DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          set -euo pipefail
+          for tag in "${STABLE_TAG}" latest; do
+            actual_digest="$(docker buildx imagetools inspect "${REGISTRY_IMAGE}:${tag}" \
+              --format '{{json .Manifest}}' | jq -r '.digest')"
+            if [[ "${actual_digest}" != "${EXPECTED_DIGEST}" ]]; then
+              echo "Promoted image digest mismatch for ${tag}: expected ${EXPECTED_DIGEST}, got ${actual_digest}" >&2
+              exit 1
+            fi
+          done
 
       - name: Create immutable stable Git tag
         env:
@@ -206,22 +237,6 @@ jobs:
             --manifest "${RUNNER_TEMP}/release/release-manifest.json" \
             --tag "${STABLE_TAG}" \
             --commit "${SOURCE_COMMIT}"
-
-      - name: Reject an existing stable GitHub release
-        env:
-          STABLE_TAG: ${{ inputs.stable_tag }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          if gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${STABLE_TAG}" \
-            > "${RUNNER_TEMP}/stable-release.json" 2> "${RUNNER_TEMP}/stable-release-error"; then
-            echo "GitHub release already exists: ${STABLE_TAG}" >&2
-            exit 1
-          fi
-          if ! grep -Eqi '404|not found' "${RUNNER_TEMP}/stable-release-error"; then
-            cat "${RUNNER_TEMP}/stable-release-error" >&2
-            exit 1
-          fi
 
       - name: Attest stable release assets
         uses: actions/attest-build-provenance@v2

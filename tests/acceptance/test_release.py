@@ -183,7 +183,70 @@ def test_release_workflows_publish_and_promote_without_rebuilding():
     assert "docker buildx imagetools create" in acceptance
     assert "release-manifest.json" in acceptance
     assert "actions/attest-build-provenance" in acceptance
+    assert acceptance.index("Reject an existing GitHub release") < acceptance.index(
+        "Promote validated digest to exact RC tag"
+    )
     assert "docker buildx imagetools create" in promotion
     assert '--tag "${REGISTRY_IMAGE}:latest"' in promotion
     assert "docker/build-push-action" not in promotion
     assert "git tag -a" in promotion
+    assert promotion.index(
+        "Reject an existing stable GitHub release"
+    ) < promotion.index("Promote the verified digest without rebuilding")
+    assert "Verify promoted image tags" in promotion
+
+
+def test_release_tag_validation_rejects_semver_leading_zeroes():
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/release.py",
+            "validate-tag",
+            "--tag",
+            "v01.2.3-rc.01",
+            "--channel",
+            "rc",
+        ],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 2
+    assert "release tag must match" in result.stderr
+
+
+def test_release_packager_rejects_non_object_platform_digests(tmp_path):
+    validation_path = tmp_path / "validation.json"
+    validation_path.write_text(json.dumps({"release_gate": "passed"}))
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/release.py",
+            "package",
+            "--version",
+            "v1.0.0-rc.1",
+            "--channel",
+            "rc",
+            "--commit",
+            "a" * 40,
+            "--image",
+            "ghcr.io/kfstorm/carnivore:v1.0.0-rc.1",
+            "--digest",
+            "sha256:" + "b" * 64,
+            "--platform-digests",
+            "[]",
+            "--validation-json",
+            str(validation_path),
+            "--output",
+            str(tmp_path / "release"),
+        ],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 2
+    assert "platform digests" in result.stderr

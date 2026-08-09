@@ -403,6 +403,22 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Reject an existing GitHub release
+        env:
+          RELEASE_TAG: ${{ needs.build-candidate.outputs.release_tag }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" \
+            > "${RUNNER_TEMP}/release.json" 2> "${RUNNER_TEMP}/release-error"; then
+            echo "GitHub release already exists: ${RELEASE_TAG}" >&2
+            exit 1
+          fi
+          if ! grep -Eqi '404|not found' "${RUNNER_TEMP}/release-error"; then
+            cat "${RUNNER_TEMP}/release-error" >&2
+            exit 1
+          fi
+
       - name: Promote validated digest to exact RC tag
         env:
           RELEASE_TAG: ${{ needs.build-candidate.outputs.release_tag }}
@@ -478,22 +494,6 @@ jobs:
             --manifest "${RUNNER_TEMP}/release/release-manifest.json" \
             --tag "${RELEASE_TAG}" \
             --commit "${SOURCE_COMMIT}"
-
-      - name: Reject an existing GitHub release
-        env:
-          RELEASE_TAG: ${{ needs.build-candidate.outputs.release_tag }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          if gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" \
-            > "${RUNNER_TEMP}/release.json" 2> "${RUNNER_TEMP}/release-error"; then
-            echo "GitHub release already exists: ${RELEASE_TAG}" >&2
-            exit 1
-          fi
-          if ! grep -Eqi '404|not found' "${RUNNER_TEMP}/release-error"; then
-            cat "${RUNNER_TEMP}/release-error" >&2
-            exit 1
-          fi
 
       - name: Attest release assets
         uses: actions/attest-build-provenance@v2
