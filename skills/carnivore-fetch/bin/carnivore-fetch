@@ -139,7 +139,7 @@ for extra_arg in "${extra_docker_args[@]}"; do
     echo "invalid_input: CARNIVORE_DOCKER_ARGS cannot override network mode" >&2
     exit 2
     ;;
-  --privileged | --privileged=* | --user | --user=* | -u | -u=* | --cap-add | --cap-add=* | \
+  --privileged | --privileged=* | --user | --user=* | -u | -u=* | -u?* | --cap-add | --cap-add=* | \
     --cap-drop | --cap-drop=* | --security-opt | --security-opt=* | --read-only | \
     --read-only=* | --userns | --userns=*)
     echo "invalid_input: CARNIVORE_DOCKER_ARGS cannot override container security" >&2

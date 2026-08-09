@@ -280,6 +280,7 @@ def test_fetch_wrapper_rejects_network_overrides(tmp_path, docker_args):
         "--user 0",
         "--user=0",
         "-u=0",
+        "-u0",
         "--cap-add SYS_ADMIN",
         "--read-only=false",
     ],
