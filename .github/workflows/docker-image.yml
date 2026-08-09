@@ -137,11 +137,22 @@ jobs:
       - name: Run local fixture contract
         run: |
           set -euo pipefail
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
+            -keyout /tmp/fixture.key -out /tmp/fixture.crt \
+            -subj /CN=localhost \
+            -addext "subjectAltName=DNS:localhost,IP:127.0.0.1,IP:::1" \
+            >/dev/null 2>&1
+          cat /etc/ssl/certs/ca-certificates.crt /tmp/fixture.crt \
+            > /tmp/fixture-ca-bundle.crt
           python3 tests/acceptance/fixture_server.py --port 18080 > /tmp/fixture.log 2>&1 &
           server_pid=$!
           python3 tests/acceptance/fixture_server.py --host ::1 --port 18081 > /tmp/fixture-ipv6.log 2>&1 &
           ipv6_server_pid=$!
-          trap 'kill "${server_pid}" "${ipv6_server_pid}" 2>/dev/null || true' EXIT
+          python3 tests/acceptance/fixture_server.py --port 18082 \
+            --cert /tmp/fixture.crt --key /tmp/fixture.key \
+            > /tmp/fixture-tls.log 2>&1 &
+          tls_server_pid=$!
+          trap 'kill "${server_pid}" "${ipv6_server_pid}" "${tls_server_pid}" 2>/dev/null || true' EXIT
           for attempt in $(seq 1 20); do
             if python3 -c 'import socket; socket.create_connection(("127.0.0.1", 18080), 1).close()' 2>/dev/null; then
               break
@@ -150,6 +161,12 @@ jobs:
           done
           for attempt in $(seq 1 20); do
             if python3 -c 'import socket; socket.create_connection(("::1", 18081), 1).close()' 2>/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          for attempt in $(seq 1 20); do
+            if python3 -c 'import socket; socket.create_connection(("127.0.0.1", 18082), 1).close()' 2>/dev/null; then
               break
             fi
             sleep 1
@@ -195,6 +212,13 @@ jobs:
           case "${host_header}" in
             *"127.0.0.1:18080"*) ;;
             *) echo "loopback Host header was rewritten" >&2; exit 1 ;;
+          esac
+
+          tls_host_header="$(CARNIVORE_DOCKER_ARGS="--mount type=bind,src=/tmp/fixture-ca-bundle.crt,dst=/etc/ssl/certs/ca-certificates.crt,readonly" \
+            fetch_wrapper https://localhost:18082/host)"
+          case "${tls_host_header}" in
+            *"localhost:18082"*) ;;
+            *) echo "loopback TLS or Host header contract failed" >&2; exit 1 ;;
           esac
 
           ipv6="$(fetch_wrapper http://[::1]:18081/article)"

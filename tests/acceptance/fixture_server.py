@@ -1,6 +1,7 @@
 import argparse
 import base64
 import socket
+import ssl
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
@@ -192,9 +193,18 @@ class IPv6ThreadingHTTPServer(ThreadingHTTPServer):
     address_family = socket.AF_INET6
 
 
-def run_server(port: int, host: str = "127.0.0.1") -> None:
+def run_server(
+    port: int,
+    host: str = "127.0.0.1",
+    certfile: str | None = None,
+    keyfile: str | None = None,
+) -> None:
     server_type = IPv6ThreadingHTTPServer if ":" in host else ThreadingHTTPServer
     server = server_type((host, port), FixtureHandler)
+    if certfile and keyfile:
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.load_cert_chain(certfile, keyfile)
+        server.socket = context.wrap_socket(server.socket, server_side=True)
     try:
         server.serve_forever()
     finally:
@@ -208,8 +218,12 @@ def main() -> None:
     )
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, required=True)
+    parser.add_argument("--cert")
+    parser.add_argument("--key")
     args = parser.parse_args()
-    run_server(args.port, args.host)
+    if bool(args.cert) != bool(args.key):
+        parser.error("--cert and --key must be provided together")
+    run_server(args.port, args.host, args.cert, args.key)
 
 
 if __name__ == "__main__":

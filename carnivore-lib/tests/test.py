@@ -240,6 +240,8 @@ def test_fetch_wrapper_applies_hardened_bridge_defaults(tmp_path):
         "https://[::1]:8443/article",
         "http://[0::1]:8080/article",
         "http://[0:0:0:0:0:0:0:1]:8080/article",
+        "http://[::0:1]:8080/article",
+        "http://[::0001]:8080/article",
     ],
 )
 def test_fetch_wrapper_uses_host_network_without_rewriting_loopback_url(tmp_path, url):
@@ -273,7 +275,14 @@ def test_fetch_wrapper_rejects_network_overrides(tmp_path, docker_args):
 
 @pytest.mark.parametrize(
     "docker_args",
-    ["--privileged", "--user 0", "--cap-add SYS_ADMIN", "--read-only=false"],
+    [
+        "--privileged",
+        "--user 0",
+        "--user=0",
+        "-u=0",
+        "--cap-add SYS_ADMIN",
+        "--read-only=false",
+    ],
 )
 def test_fetch_wrapper_rejects_security_overrides(tmp_path, docker_args):
     args_file, env = _full_fetch_wrapper_test_env(tmp_path)

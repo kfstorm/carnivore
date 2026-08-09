@@ -245,7 +245,8 @@ async def render_browser(url: str, timeout: float) -> str:
     parsed = urlsplit(url)
     if parsed.scheme not in ("http", "https") or not parsed.netloc:
         raise FetchError(ERROR_INVALID_INPUT, "URL must be an absolute HTTP(S) URL")
-    policy = RenderPolicy(allow_loopback=_host_is_loopback(parsed.hostname))
+    allow_loopback = _host_is_loopback(parsed.hostname)
+    policy = RenderPolicy(allow_loopback=allow_loopback)
     profile_dir = tempfile.mkdtemp(prefix="carnivore-render-")
     navigation_timeout_ms = int(max(0.2, timeout - 0.5) * 1000)
     try:
@@ -255,6 +256,9 @@ async def render_browser(url: str, timeout: float) -> str:
                 channel="chromium",
                 user_agent=USER_AGENT,
                 extra_http_headers=EXTRA_HTTP_HEADERS,
+                # Host-local services commonly use private certificates; public URLs
+                # keep Chromium's normal certificate validation.
+                ignore_https_errors=allow_loopback,
             )
             try:
                 page = context.pages[0]

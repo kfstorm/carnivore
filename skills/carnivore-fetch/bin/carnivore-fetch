@@ -78,10 +78,53 @@ is_loopback_url() {
 
 is_ipv6_loopback() {
   local host=$1
+  local left right part last
+  local explicit_count last_index index
+  local -a parts
 
-  [[ ${host} == ::1 ]] ||
-    [[ ${host} =~ ^(0{1,4}:){1,6}:0{0,3}1$ ]] ||
-    [[ ${host} =~ ^(0{1,4}:){7}0{0,3}1$ ]]
+  is_zero_hextet() {
+    [[ ${1} =~ ^0{1,4}$ ]]
+  }
+
+  is_one_hextet() {
+    [[ ${1} =~ ^0{0,3}1$ ]]
+  }
+
+  if [[ ${host} == *::* ]]; then
+    [[ ${host} != *::*::* ]] || return 1
+    left=${host%%::*}
+    right=${host#*::}
+    [[ -n ${right} ]] || return 1
+    explicit_count=0
+
+    if [[ -n ${left} ]]; then
+      IFS=: read -r -a parts <<< "${left}"
+      explicit_count=${#parts[@]}
+      for part in "${parts[@]}"; do
+        is_zero_hextet "${part}" || return 1
+      done
+    fi
+
+    IFS=: read -r -a parts <<< "${right}"
+    ((explicit_count += ${#parts[@]}))
+    ((explicit_count < 8)) || return 1
+    last_index=$((${#parts[@]} - 1))
+    last=${parts[${last_index}]}
+    is_one_hextet "${last}" || return 1
+    for ((index = 0; index < last_index; index++)); do
+      is_zero_hextet "${parts[${index}]}" || return 1
+    done
+    return 0
+  fi
+
+  IFS=: read -r -a parts <<< "${host}"
+  (( ${#parts[@]} == 8 )) || return 1
+  last_index=$((${#parts[@]} - 1))
+  last=${parts[${last_index}]}
+  is_one_hextet "${last}" || return 1
+  for ((index = 0; index < last_index; index++)); do
+    is_zero_hextet "${parts[${index}]}" || return 1
+  done
 }
 
 extra_docker_args=()
@@ -96,7 +139,7 @@ for extra_arg in "${extra_docker_args[@]}"; do
     echo "invalid_input: CARNIVORE_DOCKER_ARGS cannot override network mode" >&2
     exit 2
     ;;
-  --privileged | --privileged=* | --user | --user=* | -u | --cap-add | --cap-add=* | \
+  --privileged | --privileged=* | --user | --user=* | -u | -u=* | --cap-add | --cap-add=* | \
     --cap-drop | --cap-drop=* | --security-opt | --security-opt=* | --read-only | \
     --read-only=* | --userns | --userns=*)
     echo "invalid_input: CARNIVORE_DOCKER_ARGS cannot override container security" >&2
