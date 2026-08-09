@@ -1,2 +1,12 @@
 **/node_modules
 **/*.egg-info
+.git
+.venv
+.pytest_cache
+**/__pycache__
+applications
+data
+docs
+post-process
+skills
+tests

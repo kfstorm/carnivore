@@ -1,22 +1,24 @@
-name: Docker Image
+name: Core Docker Image
 
 on:
   push:
     branches:
       - main
-    paths-ignore:
-      - "**/*.md"
-      - "docs/**"
-      - "skills/**"
   workflow_dispatch:
 
 permissions:
   contents: read
   packages: write
 
+env:
+  REGISTRY_IMAGE: ghcr.io/kfstorm/carnivore
+
 jobs:
-  docker-image:
+  build:
     runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
+      digest: ${{ steps.build.outputs.digest }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -34,12 +36,229 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push
+      - name: Set candidate image
+        id: meta
+        run: |
+          image="${REGISTRY_IMAGE}:core-${GITHUB_RUN_ID}"
+          echo "image=${image}" >> "${GITHUB_OUTPUT}"
+
+      - name: Reject an existing candidate tag
+        run: |
+          image="${{ steps.meta.outputs.image }}"
+          if docker buildx imagetools inspect "${image}" > /tmp/image-inspect.txt 2>&1; then
+            echo "Candidate tag already exists: ${image}" >&2
+            exit 1
+          fi
+
+      - name: Build and push candidate
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
+          file: Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ghcr.io/kfstorm/carnivore:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          tags: |
+            ${{ env.REGISTRY_IMAGE }}:latest
+            ${{ steps.meta.outputs.image }}
+          provenance: false
+          sbom: false
+          cache-from: type=gha,scope=core-image
+          cache-to: type=gha,mode=max,scope=core-image
+
+      - name: Record manifest and component evidence
+        run: |
+          set -euo pipefail
+          image="${{ steps.meta.outputs.image }}"
+          manifest="$(docker buildx imagetools inspect "${image}" --format '{{json .Manifest}}')"
+          printf '%s\n' "${manifest}" > /tmp/core-manifest.json
+          {
+            echo "# Core image baseline"
+            echo
+            echo "- Image: \`${image}\`"
+            echo "- Manifest digest: \`${{ steps.build.outputs.digest }}\`"
+            echo "- Commit: \`${GITHUB_SHA}\`"
+            echo
+            echo "## Compressed layer sizes"
+            echo
+            echo "| Platform | Manifest | Compressed bytes |"
+            echo "| --- | --- | ---: |"
+            for platform in amd64 arm64; do
+              platform_digest="$(jq -r --arg arch "${platform}" '.manifests[] | select(.platform.os == "linux" and .platform.architecture == $arch) | .digest' /tmp/core-manifest.json)"
+              compressed="$(docker buildx imagetools inspect "${REGISTRY_IMAGE}@${platform_digest}" --format '{{json .Manifest}}' | jq '[.layers[].size] | add')"
+              echo "| linux/${platform} | \`${platform_digest}\` | ${compressed} |"
+            done
+            echo
+            echo "## Locked inputs"
+            echo
+            echo '```text'
+            cat docker/core.lock
+            echo '```'
+          } | tee /tmp/core-evidence.md >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Upload build evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-image-evidence
+          path: |
+            /tmp/core-evidence.md
+            /tmp/core-manifest.json
+
+  native-smoke:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            platform: linux/amd64
+            key: amd64
+          - runner: ubuntu-24.04-arm
+            platform: linux/arm64
+            key: arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull candidate by manifest digest
+        run: |
+          image="${{ needs.build.outputs.image }}@${{ needs.build.outputs.digest }}"
+          docker pull --platform "${{ matrix.platform }}" "${image}"
+          echo "image=${image}" >> "${GITHUB_ENV}"
+
+      - name: Run local fixture contract
+        run: |
+          set -euo pipefail
+          python3 tests/acceptance/fixture_server.py --port 18080 > /tmp/fixture.log 2>&1 &
+          server_pid=$!
+          trap 'kill "${server_pid}" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 20); do
+            if python3 -c 'import socket; socket.create_connection(("127.0.0.1", 18080), 1).close()' 2>/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+
+          markdown="$(docker run --rm --network host -e CARNIVORE_CACHE=0 "${image}" \
+            http://127.0.0.1:18080/resources --format markdown --resource-mode omit)"
+          case "${markdown}" in
+            *"Resource fixture article"*) ;;
+            *) echo "markdown + omit did not return the fixture article" >&2; exit 1 ;;
+          esac
+          case "${markdown}" in
+            *"pixel.png"*) echo "markdown + omit retained a resource" >&2; exit 1 ;;
+            *) ;;
+          esac
+
+          html="$(docker run --rm --network host -e CARNIVORE_CACHE=0 "${image}" \
+            http://127.0.0.1:18080/resources --format html --resource-mode link)"
+          case "${html}" in
+            *"pixel.png"*) ;;
+            *) echo "html + link did not retain the resource link" >&2; exit 1 ;;
+          esac
+
+          full_html="$(docker run --rm --network host -e CARNIVORE_CACHE=0 "${image}" \
+            http://127.0.0.1:18080/resources --format full_html --resource-mode embed)"
+          case "${full_html}" in
+            *"data:image/png;base64,"*) ;;
+            *) echo "full_html + embed did not embed the fixture resource" >&2; exit 1 ;;
+          esac
+
+          uncompressed="$(docker image inspect "${image}" --format '{{.Size}}')"
+          {
+            echo "# Native ${matrix.platform} smoke evidence"
+            echo
+            echo "- Image: \`${image}\`"
+            echo "- Uncompressed image bytes: ${uncompressed}"
+            echo
+            echo "## markdown + omit"
+            echo
+            echo '```markdown'
+            printf '%s\n' "${markdown}"
+            echo '```'
+            echo
+            echo "## html + link"
+            echo
+            echo '```html'
+            printf '%s\n' "${html}"
+            echo '```'
+            echo
+            echo "## full_html + embed"
+            echo
+            echo '```html'
+            printf '%s\n' "${full_html}"
+            echo '```'
+          } | tee "/tmp/core-smoke-${{ matrix.key }}.md" >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Upload native smoke evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-smoke-${{ matrix.key }}
+          path: /tmp/core-smoke-${{ matrix.key }}.md
+
+  build-baseline:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Measure cold build
+        id: cold
+        run: |
+          started="$(date +%s)"
+          docker buildx build --platform linux/amd64 --no-cache --load -t carnivore:baseline-cold .
+          finished="$(date +%s)"
+          echo "seconds=$((finished - started))" >> "${GITHUB_OUTPUT}"
+
+      - name: Measure cached build
+        id: cached
+        run: |
+          started="$(date +%s)"
+          docker buildx build --platform linux/amd64 --load -t carnivore:baseline-cached .
+          finished="$(date +%s)"
+          echo "seconds=$((finished - started))" >> "${GITHUB_OUTPUT}"
+
+      - name: Record size and build baseline
+        run: |
+          set -euo pipefail
+          image="${{ needs.build.outputs.image }}@${{ needs.build.outputs.digest }}"
+          docker pull --platform linux/amd64 "${image}"
+          uncompressed="$(docker image inspect "${image}" --format '{{.Size}}')"
+          manifest="$(docker buildx imagetools inspect "${image}" --format '{{json .Manifest}}')"
+          amd64_digest="$(jq -r '.manifests[] | select(.platform.os == "linux" and .platform.architecture == "amd64") | .digest' <<< "${manifest}")"
+          compressed="$(docker buildx imagetools inspect "${REGISTRY_IMAGE}@${amd64_digest}" --format '{{json .Manifest}}' | jq '[.layers[].size] | add')"
+          {
+            echo "# Initial core image build baseline"
+            echo
+            echo "- Image: \`${image}\`"
+            echo "- Platform: \`linux/amd64\`"
+            echo "- Compressed layer bytes: ${compressed}"
+            echo "- Uncompressed image bytes: ${uncompressed}"
+            echo "- Cold build seconds: ${{ steps.cold.outputs.seconds }}"
+            echo "- Cached build seconds: ${{ steps.cached.outputs.seconds }}"
+          } | tee /tmp/core-build-baseline.md >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Upload build baseline
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-build-baseline
+          path: /tmp/core-build-baseline.md

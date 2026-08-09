@@ -1,11 +1,11 @@
 import asyncio
 import hashlib
 import json
-import tempfile
 from urllib.parse import urlsplit
 
-from .lib import Carnivore
 from .cache import read_fetch_result, write_fetch_result
+from .convert import embed_html, html_to_markdown, remove_resources
+from .extract import extract_readability
 from .models import (
     ERROR_CONVERSION,
     ERROR_INVALID_INPUT,
@@ -71,13 +71,8 @@ class FetchPipeline:
 
     async def _fetch_within_budget(self, request: FetchRequest) -> FetchResult:
         rendered_html = await render_browser(request.url, request.timeout)
-        client = Carnivore(
-            [request.format],
-            tempfile.gettempdir(),
-            resource_mode=request.resource_mode,
-        )
         try:
-            extracted = await client._get_polished_data(rendered_html)
+            extracted = await extract_readability(rendered_html)
         except FetchError:
             raise
         except Exception:
@@ -85,7 +80,7 @@ class FetchPipeline:
         if not extracted or not extracted.get("html"):
             raise FetchError(ERROR_NO_CONTENT, "Fetched content is empty")
         try:
-            content = await self._convert(client, request, rendered_html, extracted)
+            content = await self._convert(request, rendered_html, extracted)
         except FetchError:
             raise
         except Exception:
@@ -101,33 +96,31 @@ class FetchPipeline:
         }
         return FetchResult(format=request.format, content=content, metadata=metadata)
 
-    async def _convert(self, client, request, rendered_html, extracted):
+    async def _convert(self, request, rendered_html, extracted):
         polished_html = extracted["html"]
         if request.format == "full_html":
             html = rendered_html
             if request.resource_mode == "omit":
-                return client._remove_resources(html)
+                return remove_resources(html)
             if request.resource_mode == "embed":
-                return await client._get_embedded_html(
-                    request.url, html, "rendered HTML"
-                )
+                return await embed_html(request.url, html)
             return html
 
         html = polished_html
         if request.resource_mode == "omit":
-            html = client._remove_resources(html)
+            html = remove_resources(html)
         elif request.resource_mode == "embed":
-            html = await client._get_embedded_html(request.url, html, "polished HTML")
+            html = await embed_html(request.url, html)
         if request.format == "html":
             return html
         try:
-            markdown = await client._get_markdown(html, "polished HTML")
+            markdown = await html_to_markdown(html)
         except Exception:
             markdown = None
         if markdown:
             return markdown
-        rendered_html = client._remove_resources(rendered_html)
-        return await client._get_markdown(rendered_html, "rendered HTML")
+        rendered_html = remove_resources(rendered_html)
+        return await html_to_markdown(rendered_html)
 
 
 async def fetch(request: FetchRequest) -> FetchResult:
