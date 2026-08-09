@@ -2,9 +2,17 @@
 
 set -euo pipefail
 
+wrapper_version="0.1.0"
+default_image="ghcr.io/kfstorm/carnivore:latest"
+
+if [[ ${1:-} == "--version" || ${1:-} == "-V" ]]; then
+  printf 'carnivore %s\n' "${wrapper_version}"
+  exit 0
+fi
+
 if [[ ${1:-} == "--help" || ${1:-} == "-h" ]]; then
   cat <<'EOF'
-Usage: carnivore-fetch URL [OPTIONS]
+Usage: carnivore URL [OPTIONS]
 
 Fetch readable web content with Carnivore's Dockerized browser pipeline.
 
@@ -12,8 +20,9 @@ Options:
   --format markdown|html|full_html  Extracted content format. Default: markdown.
   --output raw|json                 CLI output mode. Default: raw.
   --resource-mode omit|link|embed    Resource output mode for Markdown/HTML. Default: omit.
-                                      omit: remove images/media; link: keep original links; embed: inline resources.
+                                       omit: remove images/media; link: keep original links; embed: inline resources.
   --verbose                         Print progress logs to stderr. Default: quiet unless an error occurs.
+  -V, --version                     Show the wrapper version without starting Docker.
   -h, --help                        Show this help message. Default: not shown.
 
 Environment:
@@ -153,7 +162,7 @@ if ! command -v docker > /dev/null; then
   exit 1
 fi
 
-image=${CARNIVORE_IMAGE:-ghcr.io/kfstorm/carnivore:latest}
+image=${CARNIVORE_IMAGE:-${default_image}}
 cache_volume=${CARNIVORE_CACHE_VOLUME:-carnivore-cache}
 state_dir=${CARNIVORE_STATE_DIR:-${XDG_STATE_HOME:-${HOME}/.local/state}/carnivore-fetch}
 image_state_name=${image//[^[:alnum:]._-]/_}

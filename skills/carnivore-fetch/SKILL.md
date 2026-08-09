@@ -5,12 +5,12 @@ description: Use when reading, summarizing, extracting, or archiving web pages w
 
 # Carnivore Fetch
 
-Use the bundled `bin/carnivore-fetch` command to extract readable Markdown from web pages using Carnivore's Dockerized browser rendering pipeline.
+Use the bundled `bin/carnivore` command to extract readable Markdown from web pages using Carnivore's Dockerized browser rendering pipeline.
 
 Run:
 
 ```sh
-bin/carnivore-fetch "$URL"
+bin/carnivore "$URL"
 ```
 
 Use this when a task involves reading, summarizing, extracting, or archiving web pages, especially when pages are JavaScript-heavy, bot-protected, paywalled, or poorly handled by built-in WebFetch.
@@ -26,14 +26,14 @@ The wrapper supports an opt-in persistent cache through the `carnivore-cache` Do
 When a structured JSON envelope is specifically useful, run:
 
 ```sh
-bin/carnivore-fetch "$URL" --output json
+bin/carnivore "$URL" --output json
 ```
 
 Prefer raw Markdown for ordinary reading, summarization, and extraction tasks. Treat stdout as extracted content.
 
 Use `--verbose` only when progress logs are specifically needed.
 
-Use `bin/carnivore-fetch --help` to check supported options before using non-default arguments.
+Use `bin/carnivore --help` to check supported options before using non-default arguments.
 
 For very large pages, use shell tools such as `head`, `tail`, `grep`, `rg`, or `wc` to inspect or narrow output before using it.
 

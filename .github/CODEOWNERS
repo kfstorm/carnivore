@@ -3,6 +3,7 @@
 /scripts/benchmark.py @kfstorm
 /scripts/live-smoke.sh @kfstorm
 /scripts/check-ci-input-change.sh @kfstorm
+/scripts/release.py @kfstorm
 /tests/acceptance/fixture_server.py @kfstorm
 /Dockerfile @kfstorm
 /docker/core.lock @kfstorm

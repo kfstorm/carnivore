@@ -88,3 +88,15 @@ python scripts/benchmark.py \
 
 Run workflow shell checks with `shellcheck scripts/*.sh` and validate workflow
 syntax with `actionlint .github/workflows/*.yml` when those tools are installed.
+
+## Releases
+
+Push an annotated `vMAJOR.MINOR.PATCH-rc.N` tag to run release acceptance. The
+workflow builds and validates one candidate digest, promotes that digest to
+the exact RC image tag, and publishes versioned wrapper, installer, Skill,
+checksum, SPDX, provenance, and manifest assets.
+
+Run `Promote Stable Release` manually with the verified RC tag and a new
+`vMAJOR.MINOR.PATCH` tag. It rejects existing immutable names, creates the
+stable Git tag at the RC commit, and promotes the RC digest to the stable image
+tag and `latest` without rebuilding.

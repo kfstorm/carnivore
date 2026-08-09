@@ -1,0 +1,252 @@
+name: Promote Stable Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      rc_tag:
+        description: "Verified release-candidate tag, for example v1.0.0-rc.1"
+        required: true
+        type: string
+      stable_tag:
+        description: "New stable tag, for example v1.0.0"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY_IMAGE: ghcr.io/kfstorm/carnivore
+
+jobs:
+  promote:
+    permissions:
+      contents: write
+      packages: write
+      attestations: write
+      id-token: write
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout verified release candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.rc_tag }}
+          fetch-depth: 0
+
+      - name: Validate release tags and source commit
+        id: source
+        env:
+          RC_TAG: ${{ inputs.rc_tag }}
+          STABLE_TAG: ${{ inputs.stable_tag }}
+        run: |
+          set -euo pipefail
+          python scripts/release.py validate-tag --tag "${RC_TAG}" --channel rc
+          python scripts/release.py validate-tag --tag "${STABLE_TAG}" --channel stable
+          rc_commit="$(git rev-parse HEAD)"
+          status=0
+          stable_ref="$(git ls-remote --exit-code origin "refs/tags/${STABLE_TAG}" 2>&1)" || status=$?
+          if [[ ${status} -eq 0 ]]; then
+            echo "Stable Git tag already exists: ${STABLE_TAG}" >&2
+            exit 1
+          fi
+          if [[ ${status} -ne 2 ]]; then
+            printf '%s\n' "${stable_ref}" >&2
+            exit 1
+          fi
+          printf 'commit=%s\n' "${rc_commit}" >> "${GITHUB_OUTPUT}"
+
+      - name: Download and verify RC manifest
+        env:
+          RC_TAG: ${{ inputs.rc_tag }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/rc"
+          gh release download "${RC_TAG}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --pattern release-manifest.json \
+            --dir "${RUNNER_TEMP}/rc"
+          python scripts/release.py verify-manifest \
+            --manifest "${RUNNER_TEMP}/rc/release-manifest.json" \
+            --tag "${RC_TAG}" \
+            --commit "${{ steps.source.outputs.commit }}"
+          if [[ "$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RC_TAG}" --jq '.prerelease')" != "true" ]]; then
+            echo "RC release is not marked as a prerelease: ${RC_TAG}" >&2
+            exit 1
+          fi
+
+      - name: Read verified image digest
+        id: image
+        env:
+          RC_TAG: ${{ inputs.rc_tag }}
+        run: |
+          set -euo pipefail
+          manifest="${RUNNER_TEMP}/rc/release-manifest.json"
+          digest="$(jq -r '.image.digest' "${manifest}")"
+          [[ "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]]
+          printf 'image=%s\n' "${REGISTRY_IMAGE}:${RC_TAG}" >> "${GITHUB_OUTPUT}"
+          printf 'digest=%s\n' "${digest}" >> "${GITHUB_OUTPUT}"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify the RC tag still resolves to the verified digest
+        env:
+          RC_IMAGE: ${{ steps.image.outputs.image }}
+          EXPECTED_DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          set -euo pipefail
+          actual_digest="$(docker buildx imagetools inspect "${RC_IMAGE}" \
+            --format '{{json .Manifest}}' | jq -r '.digest')"
+          if [[ "${actual_digest}" != "${EXPECTED_DIGEST}" ]]; then
+            echo "RC image digest changed: expected ${EXPECTED_DIGEST}, got ${actual_digest}" >&2
+            exit 1
+          fi
+
+      - name: Reject an existing stable image tag
+        env:
+          STABLE_TAG: ${{ inputs.stable_tag }}
+        run: |
+          set -euo pipefail
+          stable_image="${REGISTRY_IMAGE}:${STABLE_TAG}"
+          if output="$(docker buildx imagetools inspect "${stable_image}" 2>&1)"; then
+            echo "Stable image tag already exists: ${stable_image}" >&2
+            exit 1
+          fi
+          if ! grep -Eqi 'not found|manifest unknown|no such manifest|404' <<< "${output}"; then
+            echo "Unable to determine whether stable image tag exists:" >&2
+            printf '%s\n' "${output}" >&2
+            exit 1
+          fi
+
+      - name: Promote the verified digest without rebuilding
+        env:
+          RC_IMAGE: ${{ steps.image.outputs.image }}
+          RC_DIGEST: ${{ steps.image.outputs.digest }}
+          STABLE_TAG: ${{ inputs.stable_tag }}
+        run: |
+          set -euo pipefail
+          docker buildx imagetools create \
+            --tag "${REGISTRY_IMAGE}:${STABLE_TAG}" \
+            --tag "${REGISTRY_IMAGE}:latest" \
+            "${RC_IMAGE}@${RC_DIGEST}"
+
+      - name: Create immutable stable Git tag
+        env:
+          STABLE_TAG: ${{ inputs.stable_tag }}
+          SOURCE_COMMIT: ${{ steps.source.outputs.commit }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${STABLE_TAG}" "${SOURCE_COMMIT}" -m "Carnivore ${STABLE_TAG}"
+          git push origin "${STABLE_TAG}"
+
+      - name: Collect promoted image facts
+        id: facts
+        env:
+          STABLE_TAG: ${{ inputs.stable_tag }}
+          RC_TAG: ${{ inputs.rc_tag }}
+          RC_DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          set -euo pipefail
+          stable_image="${REGISTRY_IMAGE}:${STABLE_TAG}"
+          manifest="$(docker buildx imagetools inspect "${stable_image}" --raw)"
+          platform_digests="$(jq -c '
+            [.manifests[]
+             | select(.platform.os == "linux")
+             | select((.annotations["vnd.docker.reference.type"] // "") != "attestation-manifest")
+             | {key: ("linux/" + .platform.architecture), value: .digest}]
+            | from_entries
+          ' <<< "${manifest}")"
+          printf 'platform_digests=%s\n' "${platform_digests}" >> "${GITHUB_OUTPUT}"
+          printf 'image=%s\n' "${stable_image}" >> "${GITHUB_OUTPUT}"
+          {
+            echo "{"
+            echo '  "release_gate": "passed",'
+            echo '  "offline_native": "passed",'
+            echo '  "live_smoke": "passed",'
+            echo '  "benchmark": "passed",'
+            echo '  "cache": "verified",'
+            printf '  "promoted_from": "%s",\n' "${RC_TAG}"
+            printf '  "promoted_digest": "%s",\n' "${RC_DIGEST}"
+            printf '  "workflow_run": "%s"\n' "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo "}"
+          } > "${RUNNER_TEMP}/validation.json"
+
+      - name: Build stable release assets without rebuilding the image
+        env:
+          STABLE_TAG: ${{ inputs.stable_tag }}
+          SOURCE_COMMIT: ${{ steps.source.outputs.commit }}
+          STABLE_DIGEST: ${{ steps.image.outputs.digest }}
+          STABLE_IMAGE: ${{ steps.facts.outputs.image }}
+          PLATFORM_DIGESTS: ${{ steps.facts.outputs.platform_digests }}
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/release"
+          python scripts/release.py package \
+            --version "${STABLE_TAG}" \
+            --channel stable \
+            --commit "${SOURCE_COMMIT}" \
+            --image "${STABLE_IMAGE}" \
+            --digest "${STABLE_DIGEST}" \
+            --platform-digests "${PLATFORM_DIGESTS}" \
+            --validation-json "${RUNNER_TEMP}/validation.json" \
+            --workflow-run "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            --output "${RUNNER_TEMP}/release"
+          python scripts/release.py verify-manifest \
+            --manifest "${RUNNER_TEMP}/release/release-manifest.json" \
+            --tag "${STABLE_TAG}" \
+            --commit "${SOURCE_COMMIT}"
+
+      - name: Reject an existing stable GitHub release
+        env:
+          STABLE_TAG: ${{ inputs.stable_tag }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${STABLE_TAG}" \
+            > "${RUNNER_TEMP}/stable-release.json" 2> "${RUNNER_TEMP}/stable-release-error"; then
+            echo "GitHub release already exists: ${STABLE_TAG}" >&2
+            exit 1
+          fi
+          if ! grep -Eqi '404|not found' "${RUNNER_TEMP}/stable-release-error"; then
+            cat "${RUNNER_TEMP}/stable-release-error" >&2
+            exit 1
+          fi
+
+      - name: Attest stable release assets
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: ${{ runner.temp }}/release/*
+
+      - name: Create stable GitHub release
+        env:
+          STABLE_TAG: ${{ inputs.stable_tag }}
+          RC_TAG: ${{ inputs.rc_tag }}
+          SOURCE_COMMIT: ${{ steps.source.outputs.commit }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release create "${STABLE_TAG}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --verify-tag \
+            --target "${SOURCE_COMMIT}" \
+            --title "Carnivore ${STABLE_TAG}" \
+            --notes "Promoted from verified ${RC_TAG} without rebuilding." \
+            "${RUNNER_TEMP}/release"/*
+
+      - name: Upload stable release evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assets-${{ inputs.stable_tag }}
+          path: ${{ runner.temp }}/release
+          retention-days: 365

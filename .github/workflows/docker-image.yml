@@ -45,8 +45,13 @@ jobs:
       - name: Reject an existing candidate tag
         run: |
           image="${{ steps.meta.outputs.image }}"
-          if docker buildx imagetools inspect "${image}" > /tmp/image-inspect.txt 2>&1; then
+          if output="$(docker buildx imagetools inspect "${image}" 2>&1)"; then
             echo "Candidate tag already exists: ${image}" >&2
+            exit 1
+          fi
+          if ! grep -Eqi 'not found|manifest unknown|no such manifest' <<< "${output}"; then
+            echo "Unable to determine whether candidate tag exists:" >&2
+            printf '%s\n' "${output}" >&2
             exit 1
           fi
 
@@ -58,9 +63,7 @@ jobs:
           file: Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: |
-            ${{ env.REGISTRY_IMAGE }}:latest
-            ${{ steps.meta.outputs.image }}
+          tags: ${{ steps.meta.outputs.image }}
           provenance: false
           sbom: false
           cache-from: type=gha,scope=core-image

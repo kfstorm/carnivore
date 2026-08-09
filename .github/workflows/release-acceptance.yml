@@ -29,12 +29,25 @@ jobs:
       image: ${{ steps.meta.outputs.image }}
       digest: ${{ steps.build.outputs.digest }}
       commit: ${{ steps.source.outputs.commit }}
+      release_tag: ${{ steps.release.outputs.tag }}
     steps:
       - name: Checkout candidate ref
         uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref || github.ref }}
           fetch-depth: 0
+
+      - name: Validate release-candidate tag
+        id: release
+        env:
+          REQUESTED_REF: ${{ inputs.ref }}
+          EVENT_REF: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          tag="${REQUESTED_REF:-${EVENT_REF}}"
+          tag="${tag##*/}"
+          python scripts/release.py validate-tag --tag "${tag}" --channel rc
+          echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -53,6 +66,9 @@ jobs:
         id: meta
         run: echo "image=${REGISTRY_IMAGE}:rc-${GITHUB_RUN_ID}" >> "${GITHUB_OUTPUT}"
 
+      - name: Set exact release image
+        run: echo "RELEASE_IMAGE=${REGISTRY_IMAGE}:${{ steps.release.outputs.tag }}" >> "${GITHUB_ENV}"
+
       - name: Record candidate source commit
         id: source
         run: echo "commit=$(git rev-parse HEAD)" >> "${GITHUB_OUTPUT}"
@@ -61,8 +77,26 @@ jobs:
         run: |
           set -euo pipefail
           image="${{ steps.meta.outputs.image }}"
-          if docker buildx imagetools inspect "${image}" > /tmp/image-inspect.txt 2>&1; then
+          if output="$(docker buildx imagetools inspect "${image}" 2>&1)"; then
             echo "Candidate tag already exists: ${image}" >&2
+            exit 1
+          fi
+          if ! grep -Eqi 'not found|manifest unknown|no such manifest|404' <<< "${output}"; then
+            echo "Unable to determine whether candidate tag exists:" >&2
+            printf '%s\n' "${output}" >&2
+            exit 1
+          fi
+
+      - name: Reject an existing exact release tag
+        run: |
+          set -euo pipefail
+          if output="$(docker buildx imagetools inspect "${RELEASE_IMAGE}" 2>&1)"; then
+            echo "Release image tag already exists: ${RELEASE_IMAGE}" >&2
+            exit 1
+          fi
+          if ! grep -Eqi 'not found|manifest unknown|no such manifest|404' <<< "${output}"; then
+            echo "Unable to determine whether release image tag exists:" >&2
+            printf '%s\n' "${output}" >&2
             exit 1
           fi
 
@@ -75,8 +109,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.image }}
-          provenance: false
-          sbom: false
+          provenance: mode=max
+          sbom: true
           cache-from: type=gha,scope=release-candidate
           cache-to: type=gha,mode=max,scope=release-candidate
 
@@ -342,3 +376,149 @@ jobs:
               exit 1
             fi
           done
+
+  publish-rc:
+    needs: [build-candidate, offline-native, live-smoke, benchmark-gate, release-gate]
+    permissions:
+      contents: write
+      packages: write
+      attestations: write
+      id-token: write
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout validated commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.build-candidate.outputs.commit }}
+          fetch-depth: 0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Promote validated digest to exact RC tag
+        env:
+          RELEASE_TAG: ${{ needs.build-candidate.outputs.release_tag }}
+          CANDIDATE_IMAGE: ${{ needs.build-candidate.outputs.image }}
+          CANDIDATE_DIGEST: ${{ needs.build-candidate.outputs.digest }}
+        run: |
+          set -euo pipefail
+          release_image="${REGISTRY_IMAGE}:${RELEASE_TAG}"
+          if output="$(docker buildx imagetools inspect "${release_image}" 2>&1)"; then
+            echo "Release image tag already exists: ${release_image}" >&2
+            exit 1
+          fi
+          if ! grep -Eqi 'not found|manifest unknown|no such manifest|404' <<< "${output}"; then
+            echo "Unable to determine whether release image tag exists:" >&2
+            printf '%s\n' "${output}" >&2
+            exit 1
+          fi
+          docker buildx imagetools create \
+            --tag "${release_image}" \
+            "${CANDIDATE_IMAGE}@${CANDIDATE_DIGEST}"
+
+      - name: Collect release image facts
+        id: facts
+        env:
+          RELEASE_TAG: ${{ needs.build-candidate.outputs.release_tag }}
+          RELEASE_DIGEST: ${{ needs.build-candidate.outputs.digest }}
+        run: |
+          set -euo pipefail
+          release_image="${REGISTRY_IMAGE}:${RELEASE_TAG}"
+          manifest="$(docker buildx imagetools inspect "${release_image}" --raw)"
+          platform_digests="$(jq -c '
+            [.manifests[]
+             | select(.platform.os == "linux")
+             | select((.annotations["vnd.docker.reference.type"] // "") != "attestation-manifest")
+             | {key: ("linux/" + .platform.architecture), value: .digest}]
+            | from_entries
+          ' <<< "${manifest}")"
+          printf 'platform_digests=%s\n' "${platform_digests}" >> "${GITHUB_OUTPUT}"
+          printf 'image=%s\n' "${release_image}" >> "${GITHUB_OUTPUT}"
+          {
+            echo "{"
+            echo '  "release_gate": "passed",'
+            echo '  "offline_native": "passed",'
+            echo '  "live_smoke": "passed",'
+            echo '  "benchmark": "passed",'
+            echo '  "cache": "verified",'
+            printf '  "workflow_run": "%s",\n' "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            printf '  "candidate_digest": "%s"\n' "${RELEASE_DIGEST}"
+            echo "}"
+          } > "${RUNNER_TEMP}/validation.json"
+
+      - name: Build release assets
+        env:
+          RELEASE_TAG: ${{ needs.build-candidate.outputs.release_tag }}
+          SOURCE_COMMIT: ${{ needs.build-candidate.outputs.commit }}
+          RELEASE_DIGEST: ${{ needs.build-candidate.outputs.digest }}
+          RELEASE_IMAGE: ${{ steps.facts.outputs.image }}
+          PLATFORM_DIGESTS: ${{ steps.facts.outputs.platform_digests }}
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/release"
+          python scripts/release.py package \
+            --version "${RELEASE_TAG}" \
+            --channel rc \
+            --commit "${SOURCE_COMMIT}" \
+            --image "${RELEASE_IMAGE}" \
+            --digest "${RELEASE_DIGEST}" \
+            --platform-digests "${PLATFORM_DIGESTS}" \
+            --validation-json "${RUNNER_TEMP}/validation.json" \
+            --workflow-run "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            --output "${RUNNER_TEMP}/release"
+          python scripts/release.py verify-manifest \
+            --manifest "${RUNNER_TEMP}/release/release-manifest.json" \
+            --tag "${RELEASE_TAG}" \
+            --commit "${SOURCE_COMMIT}"
+
+      - name: Reject an existing GitHub release
+        env:
+          RELEASE_TAG: ${{ needs.build-candidate.outputs.release_tag }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" \
+            > "${RUNNER_TEMP}/release.json" 2> "${RUNNER_TEMP}/release-error"; then
+            echo "GitHub release already exists: ${RELEASE_TAG}" >&2
+            exit 1
+          fi
+          if ! grep -Eqi '404|not found' "${RUNNER_TEMP}/release-error"; then
+            cat "${RUNNER_TEMP}/release-error" >&2
+            exit 1
+          fi
+
+      - name: Attest release assets
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: ${{ runner.temp }}/release/*
+
+      - name: Create GitHub prerelease
+        env:
+          RELEASE_TAG: ${{ needs.build-candidate.outputs.release_tag }}
+          SOURCE_COMMIT: ${{ needs.build-candidate.outputs.commit }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release create "${RELEASE_TAG}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --verify-tag \
+            --target "${SOURCE_COMMIT}" \
+            --title "Carnivore ${RELEASE_TAG}" \
+            --notes "Verified release candidate built from ${SOURCE_COMMIT}." \
+            --prerelease \
+            "${RUNNER_TEMP}/release"/*
+
+      - name: Upload release evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-candidate-assets-${{ needs.build-candidate.outputs.release_tag }}
+          path: ${{ runner.temp }}/release
+          retention-days: 90

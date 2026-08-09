@@ -46,7 +46,7 @@ Output formats could be customized by setting the `CARNIVORE_OUTPUT_FORMATS` env
 Carnivore can be used as a browser-backed web fetcher for LLM agents. It renders pages in Chromium, extracts article content with Readability, converts it to Markdown, and prints the result to stdout.
 
 ```sh
-carnivore-fetch https://example.com
+carnivore https://example.com
 ```
 
 The default output is raw Markdown with YAML front matter containing available metadata such as URL, title, byline, excerpt, and site name. The CLI is quiet unless an error occurs.
@@ -54,32 +54,38 @@ The default output is raw Markdown with YAML front matter containing available m
 Use JSON output when a structured envelope is useful:
 
 ```sh
-carnivore-fetch https://example.com --output json
+carnivore https://example.com --output json
 ```
 
 Select an extracted content format with `--format`:
 
 ```sh
-carnivore-fetch https://example.com --format html
-carnivore-fetch https://example.com --format full_html
+carnivore https://example.com --format html
+carnivore https://example.com --format full_html
 ```
 
 Print progress logs to stderr with `--verbose`:
 
 ```sh
-carnivore-fetch https://example.com --verbose
+carnivore https://example.com --verbose
 ```
 
 Show supported options without starting Docker:
 
 ```sh
-carnivore-fetch --help
+carnivore --help
+```
+
+Show the installed wrapper version without starting Docker:
+
+```sh
+carnivore --version
 ```
 
 Install the host wrapper:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/kfstorm/carnivore/main/scripts/install-carnivore-fetch.sh | sh
+curl -fsSL https://github.com/kfstorm/carnivore/releases/latest/download/install-carnivore.sh | sh
 ```
 
 The wrapper runs the official Docker image at execution time. This keeps heavy dependencies such as Chromium, Playwright, Pandoc, Node, and monolith inside the container. Docker is required on the host, but ordinary users do not need to clone the repository or build the image locally.
@@ -101,13 +107,13 @@ Carnivore uses `--resource-mode omit` by default, which removes image, media, an
 Enable cache when needed:
 
 ```sh
-CARNIVORE_CACHE=1 carnivore-fetch https://example.com
+CARNIVORE_CACHE=1 carnivore https://example.com
 ```
 
 Override the Docker image for local development or private registries:
 
 ```sh
-CARNIVORE_IMAGE=carnivore:local carnivore-fetch https://example.com
+CARNIVORE_IMAGE=carnivore:local carnivore https://example.com
 ```
 
 If configured on the host, the wrapper passes through `CARNIVORE_RESOURCE_MODE`, `CARNIVORE_ZENROWS_API_KEY`, `CARNIVORE_ZENROWS_PREMIUM_PROXIES`, `CARNIVORE_ZENROWS_JS_RENDERING`, `CARNIVORE_OXYLABS_USER`, and `CARNIVORE_OXYLABS_JS_RENDERING`.
@@ -120,6 +126,7 @@ Wrapper options and environment variables:
 | `--output raw\|json` | Uses `raw`. |
 | `--resource-mode omit\|link\|embed` | Uses `omit`. `omit` removes resource elements, `link` keeps original links, and `embed` inlines resources. PDF generation embeds internally. |
 | `--verbose` | Stays quiet unless an error occurs. |
+| `-V`, `--version` | Reports the wrapper version without starting Docker. |
 | `-h`, `--help` | Does not show help unless requested. |
 | `CARNIVORE_CACHE` | Disabled by default. Set `CARNIVORE_CACHE=1` to enable the cache volume. |
 | `CARNIVORE_CACHE_VOLUME` | Uses this Docker volume when `CARNIVORE_CACHE=1`; defaults to `carnivore-cache`. |
