@@ -69,6 +69,7 @@ async def main(argv=None) -> int:
                     "metadata": result.metadata,
                 },
                 ensure_ascii=False,
+                sort_keys=True,
             )
         )
     elif result.format == "markdown":
@@ -87,6 +88,7 @@ def _report_error(error: FetchError, output: str) -> int:
                     "error": {"code": error.code, "detail": error.message},
                 },
                 ensure_ascii=False,
+                sort_keys=True,
             )
         )
     else:

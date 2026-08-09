@@ -200,10 +200,24 @@ jobs:
       - name: Install browser dependencies
         run: playwright install --with-deps chromium
 
-      - name: Install Pandoc
-        uses: pandoc/actions/setup@v1
-        with:
-          version: "3.10"
+      - name: Install locked Pandoc
+        env:
+          PLATFORM_KEY: ${{ matrix.key }}
+        run: |
+          set -euo pipefail
+          source docker/core.lock
+          if [[ "${PLATFORM_KEY}" == "amd64" ]]; then
+            pandoc_arch=amd64
+            pandoc_sha256="${PANDOC_SHA256_AMD64}"
+          else
+            pandoc_arch=arm64
+            pandoc_sha256="${PANDOC_SHA256_ARM64}"
+          fi
+          curl -fsSL \
+            "${PANDOC_DOWNLOAD_BASE}/${PANDOC_VERSION}/pandoc-${PANDOC_VERSION}-linux-${pandoc_arch}.tar.gz" \
+            -o /tmp/pandoc.tar.gz
+          printf '%s  %s\n' "${pandoc_sha256}" /tmp/pandoc.tar.gz | sha256sum -c -
+          sudo tar -xzf /tmp/pandoc.tar.gz -C /usr/local --strip-components=1
 
       - name: Install locked Monolith
         env:

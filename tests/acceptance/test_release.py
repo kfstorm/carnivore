@@ -191,6 +191,8 @@ def test_release_workflows_publish_and_promote_without_rebuilding():
     assert "group: carnivore-release-candidate" in acceptance
     assert "Verify promoted RC tag" in acceptance
     assert "--format '{{json .Manifest}}'" in acceptance
+    assert "pandoc/actions/setup" not in acceptance
+    assert "PANDOC_SHA256_ARM64" in acceptance
     assert acceptance.index("Reject an existing GitHub release") < acceptance.index(
         "Promote validated digest to exact RC tag"
     )
