@@ -1,0 +1,105 @@
+{
+  "cases": {
+    "article-markdown-omit": {
+      "duration_seconds": {
+        "median": 2.973101651063189,
+        "p95": 2.990817423746921
+      },
+      "failures": 0,
+      "output_bytes": {
+        "max": 380,
+        "median": 380
+      },
+      "quality": {
+        "body_anchor_rate": 1.0,
+        "forbidden_rate": 1.0,
+        "metadata_rate": 1.0,
+        "structure_rate": 1.0
+      }
+    },
+    "javascript-early-markdown-omit": {
+      "duration_seconds": {
+        "median": 2.9798154660966247,
+        "p95": 3.0061454565729946
+      },
+      "failures": 0,
+      "output_bytes": {
+        "max": 253,
+        "median": 253
+      },
+      "quality": {
+        "body_anchor_rate": 1.0,
+        "forbidden_rate": 1.0,
+        "metadata_rate": 1.0,
+        "structure_rate": 1.0
+      }
+    },
+    "redirect-html-omit": {
+      "duration_seconds": {
+        "median": 2.972293218015693,
+        "p95": 3.0177034876309334
+      },
+      "failures": 0,
+      "output_bytes": {
+        "max": 483,
+        "median": 483
+      },
+      "quality": {
+        "body_anchor_rate": 1.0,
+        "forbidden_rate": 1.0,
+        "metadata_rate": 1.0,
+        "structure_rate": 1.0
+      }
+    },
+    "resources-full-html-embed": {
+      "duration_seconds": {
+        "median": 3.005339719937183,
+        "p95": 3.035832337010652
+      },
+      "failures": 0,
+      "output_bytes": {
+        "max": 808,
+        "median": 808
+      },
+      "quality": {
+        "body_anchor_rate": 1.0,
+        "forbidden_rate": 1.0,
+        "metadata_rate": 1.0,
+        "structure_rate": 1.0
+      }
+    },
+    "resources-html-link": {
+      "duration_seconds": {
+        "median": 2.9640617839759216,
+        "p95": 2.990354290208779
+      },
+      "failures": 0,
+      "output_bytes": {
+        "max": 403,
+        "median": 403
+      },
+      "quality": {
+        "body_anchor_rate": 1.0,
+        "forbidden_rate": 1.0,
+        "metadata_rate": 1.0,
+        "structure_rate": 1.0
+      }
+    }
+  },
+  "runs": 5,
+  "schema_version": 1,
+  "totals": {
+    "duration_seconds": {
+      "median": 14.881064892979339,
+      "p95": 14.977656102948822
+    },
+    "failures": 0,
+    "quality": {
+      "body_anchor_rate": 1.0,
+      "forbidden_rate": 1.0,
+      "metadata_rate": 1.0,
+      "structure_rate": 1.0
+    }
+  },
+  "version": "stable-0.1.0"
+}

@@ -1,0 +1,70 @@
+schema_version: 1
+
+# These cases are served by tests/acceptance/fixture_server.py. Keep the paths
+# and assertions stable; changing them is a separately reviewed CI-input change.
+cases:
+  - id: article-markdown-omit
+    path: /article
+    format: markdown
+    resource_mode: omit
+    body_anchors:
+      - primary content
+    forbidden:
+      - /pixel.png
+    structure:
+      - acceptance suite
+    metadata:
+      - title
+
+  - id: resources-html-link
+    path: /resources
+    format: html
+    resource_mode: link
+    body_anchors:
+      - local image
+    forbidden: []
+    structure:
+      - <article
+      - /pixel.png
+    metadata:
+      - title
+
+  - id: resources-full-html-embed
+    path: /resources
+    format: full_html
+    resource_mode: embed
+    body_anchors:
+      - local image
+    forbidden:
+      - /pixel.png
+    structure:
+      - <html
+      - data:image/png;base64,
+    metadata:
+      - title
+
+  - id: javascript-early-markdown-omit
+    path: /javascript-early
+    format: markdown
+    resource_mode: omit
+    body_anchors:
+      - Early JavaScript fixture content.
+    forbidden:
+      - Late JavaScript fixture content.
+    structure:
+      - Early JavaScript fixture
+    metadata:
+      - title
+
+  - id: redirect-html-omit
+    path: /redirect
+    format: html
+    resource_mode: omit
+    body_anchors:
+      - primary content
+    forbidden:
+      - /pixel.png
+    structure:
+      - <article
+    metadata:
+      - title

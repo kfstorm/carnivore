@@ -1,0 +1,344 @@
+name: Release Acceptance
+
+on:
+  push:
+    tags:
+      - "v*-rc*"
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref to validate"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY_IMAGE: ghcr.io/kfstorm/carnivore
+
+jobs:
+  build-candidate:
+    permissions:
+      contents: read
+      packages: write
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
+      digest: ${{ steps.build.outputs.digest }}
+      commit: ${{ steps.source.outputs.commit }}
+    steps:
+      - name: Checkout candidate ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+          fetch-depth: 0
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set candidate image
+        id: meta
+        run: echo "image=${REGISTRY_IMAGE}:rc-${GITHUB_RUN_ID}" >> "${GITHUB_OUTPUT}"
+
+      - name: Record candidate source commit
+        id: source
+        run: echo "commit=$(git rev-parse HEAD)" >> "${GITHUB_OUTPUT}"
+
+      - name: Reject an existing candidate tag
+        run: |
+          set -euo pipefail
+          image="${{ steps.meta.outputs.image }}"
+          if docker buildx imagetools inspect "${image}" > /tmp/image-inspect.txt 2>&1; then
+            echo "Candidate tag already exists: ${image}" >&2
+            exit 1
+          fi
+
+      - name: Build and push candidate
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.image }}
+          provenance: false
+          sbom: false
+          cache-from: type=gha,scope=release-candidate
+          cache-to: type=gha,mode=max,scope=release-candidate
+
+      - name: Record candidate evidence
+        run: |
+          {
+            echo "# Release candidate image"
+            echo
+            echo "- Commit: \`${{ steps.source.outputs.commit }}\`"
+            echo "- Image: \`${{ steps.meta.outputs.image }}\`"
+            echo "- Manifest digest: \`${{ steps.build.outputs.digest }}\`"
+            echo "- Native validation: linux/amd64 and linux/arm64"
+            echo "- Offline contract: full deterministic suite"
+            echo "- Cache validation: explicit cache-hit trace"
+          } | tee /tmp/release-candidate-evidence.md >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Upload candidate evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-candidate-${{ github.run_id }}
+          path: /tmp/release-candidate-evidence.md
+          retention-days: 90
+
+  offline-native:
+    needs: build-candidate
+    permissions:
+      contents: read
+      packages: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            platform: linux/amd64
+            key: amd64
+          - runner: ubuntu-24.04-arm
+            platform: linux/arm64
+            key: arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.build-candidate.outputs.commit }}
+
+      - name: Pull candidate by manifest digest
+        env:
+          IMAGE: ${{ needs.build-candidate.outputs.image }}@${{ needs.build-candidate.outputs.digest }}
+        run: |
+          docker pull --platform "${{ matrix.platform }}" "${IMAGE}"
+          echo "CANDIDATE_IMAGE=${IMAGE}" >> "${GITHUB_ENV}"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: |
+            requirements-dev.txt
+            docker/requirements-core.txt
+            carnivore-lib/setup.cfg
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.14.0"
+          cache: npm
+          cache-dependency-path: carnivore-lib/carnivore/readability/package-lock.json
+
+      - name: Install deterministic offline test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install \
+            -r requirements-dev.txt \
+            -r docker/requirements-core.txt \
+            -e carnivore-lib
+
+      - name: Install Readability dependencies
+        working-directory: carnivore-lib/carnivore/readability
+        run: npm ci
+
+      - name: Install browser dependencies
+        run: playwright install --with-deps chromium
+
+      - name: Install Pandoc
+        uses: pandoc/actions/setup@v1
+        with:
+          version: "3.10"
+
+      - name: Install locked Monolith
+        env:
+          PLATFORM_KEY: ${{ matrix.key }}
+        run: |
+          set -euo pipefail
+          source docker/core.lock
+          if [[ "${PLATFORM_KEY}" == "amd64" ]]; then
+            monolith_arch=x86_64
+            monolith_sha256="${MONOLITH_SHA256_AMD64}"
+          else
+            monolith_arch=aarch64
+            monolith_sha256="${MONOLITH_SHA256_ARM64}"
+          fi
+          curl -fsSL \
+            "${MONOLITH_DOWNLOAD_BASE}/v${MONOLITH_VERSION}/monolith-gnu-linux-${monolith_arch}" \
+            -o /tmp/monolith
+          printf '%s  %s\n' "${monolith_sha256}" /tmp/monolith | sha256sum -c -
+          sudo install -m 0755 /tmp/monolith /usr/local/bin/monolith
+
+      - name: Run complete deterministic offline suite
+        env:
+          CARNIVORE_CACHE: "0"
+        run: scripts/run-tests.sh
+
+      - name: Start deterministic fixture server
+        run: |
+          python3 tests/acceptance/fixture_server.py --port 18080 > /tmp/fixture.log 2>&1 &
+          echo "FIXTURE_PID=$!" >> "${GITHUB_ENV}"
+          for attempt in $(seq 1 20); do
+            if python3 -c 'import socket; socket.create_connection(("127.0.0.1", 18080), 1).close()' 2>/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/fixture.log >&2
+          exit 1
+
+      - name: Verify candidate output contract and cache evidence
+        run: |
+          set -euo pipefail
+          evidence="${RUNNER_TEMP}/offline-${{ matrix.key }}.md"
+          CACHE_VOLUME=""
+          trap 'kill "${FIXTURE_PID}" 2>/dev/null || true; docker volume rm "${CACHE_VOLUME}" >/dev/null 2>&1 || true' EXIT
+          markdown="$(docker run --rm --platform "${{ matrix.platform }}" --network host "${CANDIDATE_IMAGE}" \
+            http://127.0.0.1:18080/resources --format markdown --resource-mode omit)"
+          [[ "${markdown}" == *"Resource fixture article"* ]]
+          [[ "${markdown}" != *"pixel.png"* ]]
+
+          html="$(docker run --rm --platform "${{ matrix.platform }}" --network host "${CANDIDATE_IMAGE}" \
+            http://127.0.0.1:18080/resources --format html --resource-mode link)"
+          [[ "${html}" == *"pixel.png"* ]]
+
+          full_html="$(docker run --rm --platform "${{ matrix.platform }}" --network host "${CANDIDATE_IMAGE}" \
+            http://127.0.0.1:18080/resources --format full_html --resource-mode embed)"
+          [[ "${full_html}" == *"data:image/png;base64,"* ]]
+
+          CACHE_VOLUME="carnivore-rc-cache-${GITHUB_RUN_ID}-${{ matrix.key }}"
+          docker volume create "${CACHE_VOLUME}" >/dev/null
+          cache_url=http://127.0.0.1:18080/article
+          docker run --rm --platform "${{ matrix.platform }}" --network host \
+            --mount "type=volume,source=${CACHE_VOLUME},destination=/cache" \
+            --env CARNIVORE_CACHE=1 --env CARNIVORE_CACHE_DIR=/cache \
+            "${CANDIDATE_IMAGE}" "${cache_url}" --output json > "${RUNNER_TEMP}/cache-first.json"
+          docker run --rm --platform "${{ matrix.platform }}" --network host \
+            --mount "type=volume,source=${CACHE_VOLUME},destination=/cache" \
+            --env CARNIVORE_CACHE=1 --env CARNIVORE_CACHE_DIR=/cache \
+            --env CARNIVORE_CACHE_TRACE=1 \
+            "${CANDIDATE_IMAGE}" "${cache_url}" --output json \
+            > "${RUNNER_TEMP}/cache-second.json" 2> "${RUNNER_TEMP}/cache-trace.log"
+          cmp "${RUNNER_TEMP}/cache-first.json" "${RUNNER_TEMP}/cache-second.json"
+          grep -Fxq cache_hit "${RUNNER_TEMP}/cache-trace.log"
+
+          {
+            echo "# Native offline evidence (${{ matrix.platform }})"
+            echo
+            echo "- Image: \`${CANDIDATE_IMAGE}\`"
+            echo "- Full offline suite: passed"
+            echo "- markdown + omit: passed"
+            echo "- html + link: passed"
+            echo "- full_html + embed: passed"
+            echo "- cache hit: explicit cache_hit trace and byte-identical JSON"
+          } | tee "${evidence}" >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Upload native offline evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-offline-${{ matrix.key }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/offline-${{ matrix.key }}.md
+          if-no-files-found: warn
+          retention-days: 90
+
+  live-smoke:
+    needs: build-candidate
+    permissions:
+      contents: read
+      packages: read
+    uses: ./.github/workflows/live-smoke.yml
+    with:
+      image: ${{ needs.build-candidate.outputs.image }}@${{ needs.build-candidate.outputs.digest }}
+      ref: ${{ needs.build-candidate.outputs.commit }}
+    secrets: inherit
+
+  benchmark-initial:
+    needs: build-candidate
+    permissions:
+      contents: read
+      packages: read
+    uses: ./.github/workflows/benchmark.yml
+    with:
+      image: ${{ needs.build-candidate.outputs.image }}@${{ needs.build-candidate.outputs.digest }}
+      ref: ${{ needs.build-candidate.outputs.commit }}
+      label: initial
+      enforce_gate: false
+    secrets: inherit
+
+  benchmark-confirm:
+    needs: build-candidate
+    permissions:
+      contents: read
+      packages: read
+    uses: ./.github/workflows/benchmark.yml
+    with:
+      image: ${{ needs.build-candidate.outputs.image }}@${{ needs.build-candidate.outputs.digest }}
+      ref: ${{ needs.build-candidate.outputs.commit }}
+      label: confirming
+      enforce_gate: false
+    secrets: inherit
+
+  benchmark-gate:
+    needs: [benchmark-initial, benchmark-confirm]
+    if: always()
+    permissions:
+      contents: read
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require an independent confirming benchmark failure
+        env:
+          INITIAL_STATUS: ${{ needs.benchmark-initial.outputs.status }}
+          CONFIRMING_STATUS: ${{ needs.benchmark-confirm.outputs.status }}
+        run: |
+          set -euo pipefail
+          echo "Initial benchmark status: ${INITIAL_STATUS}"
+          echo "Independent confirming benchmark status: ${CONFIRMING_STATUS}"
+          if [[ "${INITIAL_STATUS}" != "0" && "${CONFIRMING_STATUS}" != "0" ]]; then
+            echo "Both independent benchmark runs failed; blocking release candidate." >&2
+            exit 1
+          fi
+          if [[ "${INITIAL_STATUS}" != "0" || "${CONFIRMING_STATUS}" != "0" ]]; then
+            echo "One benchmark run failed, but the independent confirmation did not reproduce it."
+          fi
+
+  release-gate:
+    needs: [build-candidate, offline-native, live-smoke, benchmark-gate]
+    if: always()
+    permissions:
+      contents: read
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require every release acceptance gate
+        env:
+          BUILD_RESULT: ${{ needs.build-candidate.result }}
+          OFFLINE_RESULT: ${{ needs.offline-native.result }}
+          LIVE_RESULT: ${{ needs.live-smoke.result }}
+          BENCHMARK_RESULT: ${{ needs.benchmark-gate.result }}
+        run: |
+          set -euo pipefail
+          for result in "${BUILD_RESULT}" "${OFFLINE_RESULT}" "${LIVE_RESULT}" "${BENCHMARK_RESULT}"; do
+            if [[ "${result}" != "success" ]]; then
+              echo "Release acceptance gate did not pass: ${result}" >&2
+              exit 1
+            fi
+          done

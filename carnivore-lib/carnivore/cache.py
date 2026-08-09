@@ -1,6 +1,7 @@
 import hashlib
 import json
 import os
+import sys
 import uuid
 from functools import wraps
 from pathlib import Path
@@ -38,6 +39,11 @@ def _cache_path(key: str) -> Path:
     return _cache_dir() / f"{key}.json"
 
 
+def _trace_cache_hit() -> None:
+    if os.environ.get("CARNIVORE_CACHE_TRACE") == "1":
+        print("cache_hit", file=sys.stderr)
+
+
 def _payload_checksum(payload: dict) -> str:
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
@@ -64,9 +70,11 @@ def read_fetch_result(key: str, result_type):
         metadata = payload.get("metadata", {})
         if not isinstance(metadata, dict):
             return None
-        return result_type(
+        result = result_type(
             format=payload["format"], content=payload["content"], metadata=metadata
         )
+        _trace_cache_hit()
+        return result
     except (OSError, TypeError, ValueError, json.JSONDecodeError):
         return None
 

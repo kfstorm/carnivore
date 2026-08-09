@@ -52,6 +52,31 @@ async def test_cache_hit_returns_without_running_pipeline(monkeypatch, tmp_path)
 
 
 @pytest.mark.asyncio
+async def test_cache_trace_reports_only_explicit_cache_hits(
+    monkeypatch, tmp_path, capsys
+):
+    monkeypatch.setenv("CARNIVORE_CACHE", "1")
+    monkeypatch.setenv("CARNIVORE_CACHE_DIR", str(tmp_path))
+    request = FetchRequest("https://example.com/article")
+    expected = FetchResult("markdown", "cached", {"title": "Article"})
+    from carnivore.cache import write_fetch_result
+
+    write_fetch_result(_cache_key(request), expected)
+    monkeypatch.setattr(
+        FetchPipeline,
+        "_fetch_within_budget",
+        lambda *args: pytest.fail("cache hit started the fetch pipeline"),
+    )
+
+    assert await FetchPipeline().fetch(request) == expected
+    assert capsys.readouterr().err == ""
+
+    monkeypatch.setenv("CARNIVORE_CACHE_TRACE", "1")
+    assert await FetchPipeline().fetch(request) == expected
+    assert capsys.readouterr().err == "cache_hit\n"
+
+
+@pytest.mark.asyncio
 async def test_corrupt_cache_and_legacy_pickle_are_ignored(monkeypatch, tmp_path):
     monkeypatch.setenv("CARNIVORE_CACHE", "1")
     monkeypatch.setenv("CARNIVORE_CACHE_DIR", str(tmp_path))

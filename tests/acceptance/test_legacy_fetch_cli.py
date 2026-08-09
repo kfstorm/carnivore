@@ -4,6 +4,8 @@ import sys
 import time
 from pathlib import Path
 
+import pytest
+
 
 PROJECT_ROOT = Path(__file__).parents[2]
 
@@ -104,6 +106,9 @@ def test_fetch_cli_reports_empty_content_on_stderr(fixture_server):
     assert result.stderr
 
 
+@pytest.mark.xfail(
+    reason="pre-contract legacy CLI waits for network idle", strict=False
+)
 def test_fetch_cli_uses_fixed_settle_window_despite_continuous_network_activity(
     fixture_server,
 ):

@@ -752,6 +752,7 @@ def test_cache_key_includes_runtime_configuration():
     assert "secret-password" not in str(oxylabs_instance.get_cache_namespace())
 
 
+@pytest.mark.live
 @pytest.mark.asyncio
 async def test_dynamic_content_loading(carnivore_instance):
     await _test_common(
@@ -761,6 +762,7 @@ async def test_dynamic_content_loading(carnivore_instance):
     )
 
 
+@pytest.mark.live
 @pytest.mark.asyncio
 async def test_visibility_hidden(carnivore_instance):
     await _test_common(
@@ -770,6 +772,7 @@ async def test_visibility_hidden(carnivore_instance):
     )
 
 
+@pytest.mark.live
 @pytest.mark.asyncio
 async def test_no_timeout(carnivore_instance):
     await _test_common(
@@ -779,6 +782,7 @@ async def test_no_timeout(carnivore_instance):
     )
 
 
+@pytest.mark.live
 @pytest.mark.asyncio
 async def test_pdf_images_no_lazy_loading(carnivore_instance):
     await _test_common(
@@ -789,6 +793,7 @@ async def test_pdf_images_no_lazy_loading(carnivore_instance):
     )
 
 
+@pytest.mark.live
 @pytest.mark.asyncio
 async def test_http_headers(carnivore_instance):
     output = await _test_common(

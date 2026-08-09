@@ -1,0 +1,10 @@
+# Release and regression inputs require maintainer review.
+/benchmarks/** @kfstorm
+/scripts/benchmark.py @kfstorm
+/scripts/live-smoke.sh @kfstorm
+/scripts/check-ci-input-change.sh @kfstorm
+/tests/acceptance/fixture_server.py @kfstorm
+/Dockerfile @kfstorm
+/docker/core.lock @kfstorm
+/.github/CODEOWNERS @kfstorm
+/.github/workflows/*.yml @kfstorm

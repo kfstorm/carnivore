@@ -1,0 +1,58 @@
+name: CI Input Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  separate-input-change:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Require a separate CI input change
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          checker="${RUNNER_TEMP}/check-ci-input-change.sh"
+          if git cat-file -e "${{ github.event.pull_request.base.sha }}:scripts/check-ci-input-change.sh" 2>/dev/null; then
+            git show "${{ github.event.pull_request.base.sha }}:scripts/check-ci-input-change.sh" > "${checker}"
+            chmod +x "${checker}"
+            "${checker}" \
+              "${{ github.event.pull_request.base.sha }}" \
+              "${{ github.event.pull_request.head.sha }}" \
+              "${PR_BODY}"
+          else
+            protected_change=false
+            while IFS= read -r file; do
+              case "${file}" in
+              Dockerfile|docker/core.lock|benchmarks/corpus.yml|benchmarks/results/stable.json|scripts/benchmark.py|scripts/live-smoke.sh|tests/acceptance/fixture_server.py)
+                protected_change=true
+                ;;
+              esac
+            done < <(git diff --name-only "${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}")
+            if [[ "${protected_change}" == "true" ]]; then
+              if [[ "${PR_BODY}" != *"CI input bootstrap:"* ]]; then
+                echo "Initial CI input changes require the 'CI input bootstrap:' marker." >&2
+                exit 1
+              fi
+              rationale="${PR_BODY#*CI input change rationale:}"
+              marker_missing=false
+              if [[ "${PR_BODY}" == "${rationale}" ]]; then
+                marker_missing=true
+              fi
+              rationale="${rationale//[[:space:]]/}"
+              if [[ "${marker_missing}" == "true" || ${#rationale} -lt 20 ]]; then
+                echo "Initial CI input changes require an explained rationale and CODEOWNER review." >&2
+                exit 1
+              fi
+            fi
+            echo "Initial CI input review uses the bootstrap path; require CODEOWNER approval."
+          fi
