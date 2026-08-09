@@ -1,5 +1,6 @@
 import argparse
 import base64
+import socket
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
@@ -131,6 +132,11 @@ setTimeout(() => {
             ).replace(
                 "</article>", '<img src="/pixel.png" alt="fixture pixel"></article>'
             )
+        elif path == "/host":
+            content = article(
+                "Host header fixture",
+                f"The request Host header was {self.headers.get('Host', '')}.",
+            )
         elif path == "/continuous-network":
             content = article(
                 "Continuous network fixture",
@@ -182,8 +188,13 @@ setTimeout(() => {
         pass
 
 
-def run_server(port: int) -> None:
-    server = ThreadingHTTPServer(("127.0.0.1", port), FixtureHandler)
+class IPv6ThreadingHTTPServer(ThreadingHTTPServer):
+    address_family = socket.AF_INET6
+
+
+def run_server(port: int, host: str = "127.0.0.1") -> None:
+    server_type = IPv6ThreadingHTTPServer if ":" in host else ThreadingHTTPServer
+    server = server_type((host, port), FixtureHandler)
     try:
         server.serve_forever()
     finally:
@@ -195,9 +206,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Serve deterministic Carnivore fixtures"
     )
+    parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, required=True)
     args = parser.parse_args()
-    run_server(args.port)
+    run_server(args.port, args.host)
 
 
 if __name__ == "__main__":

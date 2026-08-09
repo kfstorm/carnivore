@@ -21,7 +21,7 @@ Carnivore uses `--resource-mode omit` by default, which removes image, media, an
 
 The front matter contains common metadata such as URL, title, byline, excerpt, and site name when available.
 
-The wrapper enables persistent cache by default through the `carnivore-cache` Docker volume. Do not disable it unless the task specifically requires a fresh fetch.
+The wrapper supports an opt-in persistent cache through the `carnivore-cache` Docker volume. Set `CARNIVORE_CACHE=1` when repeated fetches should reuse validated results; fresh fetching is the default.
 
 When a structured JSON envelope is specifically useful, run:
 

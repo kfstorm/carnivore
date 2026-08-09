@@ -139,15 +139,28 @@ jobs:
           set -euo pipefail
           python3 tests/acceptance/fixture_server.py --port 18080 > /tmp/fixture.log 2>&1 &
           server_pid=$!
-          trap 'kill "${server_pid}" 2>/dev/null || true' EXIT
+          python3 tests/acceptance/fixture_server.py --host ::1 --port 18081 > /tmp/fixture-ipv6.log 2>&1 &
+          ipv6_server_pid=$!
+          trap 'kill "${server_pid}" "${ipv6_server_pid}" 2>/dev/null || true' EXIT
           for attempt in $(seq 1 20); do
             if python3 -c 'import socket; socket.create_connection(("127.0.0.1", 18080), 1).close()' 2>/dev/null; then
               break
             fi
             sleep 1
           done
+          for attempt in $(seq 1 20); do
+            if python3 -c 'import socket; socket.create_connection(("::1", 18081), 1).close()' 2>/dev/null; then
+              break
+            fi
+            sleep 1
+          done
 
-          markdown="$(docker run --rm --network host -e CARNIVORE_CACHE=0 "${image}" \
+          fetch_wrapper() {
+            CARNIVORE_IMAGE="${image}" CARNIVORE_PULL=0 CARNIVORE_CACHE=0 \
+              skills/carnivore-fetch/bin/carnivore-fetch "$@"
+          }
+
+          markdown="$(fetch_wrapper \
             http://127.0.0.1:18080/resources --format markdown --resource-mode omit)"
           case "${markdown}" in
             *"Resource fixture article"*) ;;
@@ -158,18 +171,36 @@ jobs:
             *) ;;
           esac
 
-          html="$(docker run --rm --network host -e CARNIVORE_CACHE=0 "${image}" \
+          html="$(fetch_wrapper \
             http://127.0.0.1:18080/resources --format html --resource-mode link)"
           case "${html}" in
             *"pixel.png"*) ;;
             *) echo "html + link did not retain the resource link" >&2; exit 1 ;;
           esac
 
-          full_html="$(docker run --rm --network host -e CARNIVORE_CACHE=0 "${image}" \
+          full_html="$(fetch_wrapper \
             http://127.0.0.1:18080/resources --format full_html --resource-mode embed)"
           case "${full_html}" in
             *"data:image/png;base64,"*) ;;
             *) echo "full_html + embed did not embed the fixture resource" >&2; exit 1 ;;
+          esac
+
+          redirect="$(fetch_wrapper http://127.0.0.1:18080/redirect)"
+          case "${redirect}" in
+            *"Static fixture article"*) ;;
+            *) echo "loopback redirect did not return the fixture article" >&2; exit 1 ;;
+          esac
+
+          host_header="$(fetch_wrapper http://127.0.0.1:18080/host)"
+          case "${host_header}" in
+            *"127.0.0.1:18080"*) ;;
+            *) echo "loopback Host header was rewritten" >&2; exit 1 ;;
+          esac
+
+          ipv6="$(fetch_wrapper http://[::1]:18081/article)"
+          case "${ipv6}" in
+            *"Static fixture article"*) ;;
+            *) echo "IPv6 loopback fetch did not return the fixture article" >&2; exit 1 ;;
           esac
 
           uncompressed="$(docker image inspect "${image}" --format '{{.Size}}')"

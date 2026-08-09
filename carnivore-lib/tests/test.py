@@ -166,6 +166,156 @@ def _run_fetch_wrapper(env):
     )
 
 
+def _full_docker_command_logger(tmp_path):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    args_file = tmp_path / "args.txt"
+    docker_path = bin_dir / "docker"
+    docker_path.write_text(
+        "#!/usr/bin/env bash\n"
+        'printf \'%s\\n\' "$@" > "${CARNIVORE_TEST_ARGS_FILE}"\n'
+        "if [[ ${CARNIVORE_TEST_HOST_NETWORK_FAIL:-} == 1 ]]; then\n"
+        "  printf 'host network is not supported\\n' >&2\n"
+        "  exit 125\n"
+        "fi\n"
+    )
+    docker_path.chmod(0o755)
+    return bin_dir, args_file
+
+
+def _full_fetch_wrapper_test_env(tmp_path):
+    bin_dir, args_file = _full_docker_command_logger(tmp_path)
+    return args_file, {
+        **os.environ,
+        "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        "CARNIVORE_TEST_ARGS_FILE": str(args_file),
+        "CARNIVORE_CACHE": "0",
+        "CARNIVORE_PULL": "0",
+    }
+
+
+def _run_full_fetch_wrapper(env, url="https://example.com"):
+    return subprocess.run(
+        ["skills/carnivore-fetch/bin/carnivore-fetch", url],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+
+def _read_docker_args(args_file):
+    return args_file.read_text().splitlines()
+
+
+def test_fetch_wrapper_applies_hardened_bridge_defaults(tmp_path):
+    args_file, env = _full_fetch_wrapper_test_env(tmp_path)
+
+    result = _run_full_fetch_wrapper(env)
+
+    assert result.returncode == 0
+    args = _read_docker_args(args_file)
+    assert args[args.index("--network") + 1] == "bridge"
+    assert args[args.index("--user") + 1] == "1000:1000"
+    assert "--read-only" in args
+    assert args[args.index("--cap-drop") + 1] == "ALL"
+    assert args[args.index("--security-opt") + 1] == "no-new-privileges"
+    assert args[args.index("--tmpfs") + 1] == ("/tmp:rw,noexec,nosuid,nodev,size=64m")
+    assert args[args.index("--shm-size") + 1] == "64m"
+    assert args[args.index("--cpus") + 1] == "2"
+    assert args[args.index("--memory") + 1] == "1g"
+    assert args[args.index("--pids-limit") + 1] == "256"
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://localhost:8080/article",
+        "https://127.0.0.1:8443/article",
+        "http://127.0.0.2:8080/article",
+        "https://[::1]:8443/article",
+    ],
+)
+def test_fetch_wrapper_uses_host_network_without_rewriting_loopback_url(tmp_path, url):
+    args_file, env = _full_fetch_wrapper_test_env(tmp_path)
+
+    result = _run_full_fetch_wrapper(env, url)
+
+    assert result.returncode == 0
+    args = _read_docker_args(args_file)
+    assert args[args.index("--network") + 1] == "host"
+    assert url in args
+    assert "host.docker.internal" not in args
+
+
+@pytest.mark.parametrize("docker_args", ["--network bridge", "--net=host"])
+def test_fetch_wrapper_rejects_network_overrides(tmp_path, docker_args):
+    args_file, env = _full_fetch_wrapper_test_env(tmp_path)
+    env["CARNIVORE_DOCKER_ARGS"] = docker_args
+    url = "http://localhost:8080/private?token=secret"
+
+    result = _run_full_fetch_wrapper(env, url)
+
+    assert result.returncode == 2
+    assert result.stdout == ""
+    assert result.stderr == (
+        "invalid_input: CARNIVORE_DOCKER_ARGS cannot override network mode\n"
+    )
+    assert url not in result.stderr
+    assert not args_file.exists()
+
+
+def test_fetch_wrapper_allows_explicit_resource_overrides(tmp_path):
+    args_file, env = _full_fetch_wrapper_test_env(tmp_path)
+    env["CARNIVORE_DOCKER_ARGS"] = "--cpus=4 --memory=2g --pids-limit=512"
+
+    result = _run_full_fetch_wrapper(env)
+
+    assert result.returncode == 0
+    args = _read_docker_args(args_file)
+    assert "--cpus=4" in args
+    assert "--memory=2g" in args
+    assert "--pids-limit=512" in args
+
+
+def test_fetch_wrapper_mounts_cache_volume_only_when_enabled(tmp_path):
+    args_file, env = _full_fetch_wrapper_test_env(tmp_path)
+    env.update(
+        {
+            "CARNIVORE_CACHE": "1",
+            "CARNIVORE_CACHE_VOLUME": "private-cache",
+        }
+    )
+
+    result = _run_full_fetch_wrapper(env)
+
+    assert result.returncode == 0
+    args = _read_docker_args(args_file)
+    assert "private-cache:/cache:rw" in args
+    assert "CARNIVORE_CACHE=1" in args
+    assert "CARNIVORE_CACHE_DIR=/cache" in args
+
+
+def test_fetch_wrapper_desensitizes_host_network_failure(tmp_path):
+    args_file, env = _full_fetch_wrapper_test_env(tmp_path)
+    env["CARNIVORE_TEST_HOST_NETWORK_FAIL"] = "1"
+    url = "https://localhost:8443/private?token=secret"
+
+    result = _run_full_fetch_wrapper(env, url)
+
+    assert result.returncode == 1
+    assert result.stdout == ""
+    assert result.stderr == (
+        "network_error: Host networking is unavailable or disabled. "
+        "Enable host networking in Docker Desktop, or use a Docker Engine "
+        "with host networking support.\n"
+    )
+    assert url not in result.stderr
+    assert "host.docker.internal" not in result.stderr
+    args = _read_docker_args(args_file)
+    assert args[args.index("--network") + 1] == "host"
+
+
 def test_fetch_wrapper_pulls_at_most_once_per_day_by_default(tmp_path):
     commands_file, env = _fetch_wrapper_test_env(tmp_path)
 

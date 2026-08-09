@@ -30,3 +30,12 @@ def test_fixture_server_provides_an_empty_document(fixture_server):
 
     assert response.status == 200
     assert "<body></body>" in content
+
+
+def test_fixture_server_preserves_the_request_host_header(fixture_server):
+    with urlopen(f"{fixture_server}/host", timeout=3) as response:
+        content = response.read().decode()
+
+    assert response.status == 200
+    assert "Host header fixture" in content
+    assert fixture_server.split("://", 1)[1] in content
