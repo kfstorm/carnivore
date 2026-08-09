@@ -18,6 +18,10 @@ permissions:
 env:
   REGISTRY_IMAGE: ghcr.io/kfstorm/carnivore
 
+concurrency:
+  group: carnivore-release-${{ inputs.ref || github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
   build-candidate:
     permissions:
@@ -439,6 +443,19 @@ jobs:
           docker buildx imagetools create \
             --tag "${release_image}" \
             "${CANDIDATE_IMAGE}@${CANDIDATE_DIGEST}"
+
+      - name: Verify promoted RC tag
+        env:
+          RELEASE_TAG: ${{ needs.build-candidate.outputs.release_tag }}
+          EXPECTED_DIGEST: ${{ needs.build-candidate.outputs.digest }}
+        run: |
+          set -euo pipefail
+          actual_digest="$(docker buildx imagetools inspect "${REGISTRY_IMAGE}:${RELEASE_TAG}" \
+            --format '{{json .Manifest}}' | jq -r '.digest')"
+          if [[ "${actual_digest}" != "${EXPECTED_DIGEST}" ]]; then
+            echo "Promoted RC image digest mismatch: expected ${EXPECTED_DIGEST}, got ${actual_digest}" >&2
+            exit 1
+          fi
 
       - name: Collect release image facts
         id: facts

@@ -18,6 +18,10 @@ permissions:
 env:
   REGISTRY_IMAGE: ghcr.io/kfstorm/carnivore
 
+concurrency:
+  group: carnivore-release-${{ inputs.rc_tag }}
+  cancel-in-progress: false
+
 jobs:
   promote:
     permissions:

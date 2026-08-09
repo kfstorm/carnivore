@@ -167,6 +167,10 @@ def test_release_packager_publishes_pinned_assets_and_manifest(tmp_path):
     )
     assert verified.returncode == 0, verified.stderr
 
+    sbom = json.loads((output_dir / "carnivore-sbom.spdx.json").read_text())
+    purl = sbom["packages"][0]["externalRefs"][0]["referenceLocator"]
+    assert purl == "pkg:docker/ghcr.io/kfstorm/carnivore@sha256:" + "b" * 64
+
     checksum_lines = (output_dir / "SHA256SUMS").read_text().splitlines()
     checksums = {
         name: digest
@@ -183,6 +187,9 @@ def test_release_workflows_publish_and_promote_without_rebuilding():
     assert "docker buildx imagetools create" in acceptance
     assert "release-manifest.json" in acceptance
     assert "actions/attest-build-provenance" in acceptance
+    assert "concurrency:" in acceptance
+    assert "Verify promoted RC tag" in acceptance
+    assert "--format '{{json .Manifest}}'" in acceptance
     assert acceptance.index("Reject an existing GitHub release") < acceptance.index(
         "Promote validated digest to exact RC tag"
     )
@@ -190,6 +197,7 @@ def test_release_workflows_publish_and_promote_without_rebuilding():
     assert '--tag "${REGISTRY_IMAGE}:latest"' in promotion
     assert "docker/build-push-action" not in promotion
     assert "git tag -a" in promotion
+    assert "concurrency:" in promotion
     assert promotion.index(
         "Reject an existing stable GitHub release"
     ) < promotion.index("Promote the verified digest without rebuilding")

@@ -254,7 +254,7 @@ def _spdx_document(
             {
                 "referenceCategory": "PACKAGE-MANAGER",
                 "referenceType": "purl",
-                "referenceLocator": f"pkg:docker/{image}@{digest}",
+                "referenceLocator": f"pkg:docker/{REPOSITORY}@{digest}",
             }
         ],
     }
