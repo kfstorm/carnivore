@@ -188,6 +188,7 @@ def test_release_workflows_publish_and_promote_without_rebuilding():
     assert "release-manifest.json" in acceptance
     assert "actions/attest-build-provenance" in acceptance
     assert "concurrency:" in acceptance
+    assert "group: carnivore-release-candidate" in acceptance
     assert "Verify promoted RC tag" in acceptance
     assert "--format '{{json .Manifest}}'" in acceptance
     assert acceptance.index("Reject an existing GitHub release") < acceptance.index(
