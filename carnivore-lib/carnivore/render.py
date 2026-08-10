@@ -17,8 +17,14 @@ from urllib.parse import urljoin, urlsplit
 from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 from playwright.async_api import async_playwright
 
+try:
+    from playwright_stealth import Stealth
+except Exception:
+    Stealth = None
+
 from .models import (
     ERROR_HTTP,
+    ERROR_INTERNAL,
     ERROR_INVALID_INPUT,
     ERROR_NETWORK,
     ERROR_POLICY,
@@ -216,6 +222,15 @@ async def _safe_abort(route) -> None:
         pass
 
 
+async def _apply_stealth(context) -> None:
+    try:
+        if Stealth is None:
+            raise RuntimeError("playwright-stealth is unavailable")
+        await Stealth().apply_stealth_async(context)
+    except Exception:
+        raise FetchError(ERROR_INTERNAL, "Stealth initialization failed")
+
+
 def _bind_rejections(context) -> None:
     async def reject_new_page(page):
         try:
@@ -261,6 +276,7 @@ async def render_browser(url: str, timeout: float) -> str:
                 ignore_https_errors=allow_loopback,
             )
             try:
+                await _apply_stealth(context)
                 page = context.pages[0]
                 _bind_rejections(context)
                 await page.route("**/*", _make_route_handler(page, policy))

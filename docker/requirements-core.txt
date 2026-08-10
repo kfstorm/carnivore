@@ -1,6 +1,7 @@
 beautifulsoup4==4.12.3
 greenlet==3.1.1
 playwright==1.48.0
+playwright-stealth==2.0.3 --hash=sha256:1887ade423ab7ff8ae16d363a30a38de0b5817e1e4a29d47b74bf3a0e3dbfcb
 pyee==12.0.0
 ruamel.yaml==0.18.6
 ruamel.yaml.clib==0.2.12
