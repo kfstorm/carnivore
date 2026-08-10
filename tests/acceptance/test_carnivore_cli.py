@@ -1,10 +1,15 @@
 import json
-import json
 import os
 import re
 import subprocess
 import sys
 from pathlib import Path
+
+import pytest
+
+from carnivore import pipeline
+from carnivore.cli import main
+from carnivore.models import ERROR_INTERNAL, FetchError
 
 
 PROJECT_ROOT = Path(__file__).parents[2]
@@ -96,6 +101,21 @@ def test_carnivore_module_reports_raw_errors_on_stderr(static_article_url):
     assert result.stdout == ""
     assert result.stderr == "invalid_input: Unsupported resource mode\n"
     assert static_article_url not in result.stderr
+
+
+@pytest.mark.asyncio
+async def test_renderer_failure_has_no_partial_cli_stdout(monkeypatch, capsys):
+    async def fail_render(_url, _timeout):
+        raise FetchError(ERROR_INTERNAL, "Stealth initialization failed")
+
+    monkeypatch.setattr(pipeline, "render_browser", fail_render)
+
+    result = await main(["http://127.0.0.1:8080/article"])
+
+    captured = capsys.readouterr()
+    assert result == 1
+    assert captured.out == ""
+    assert captured.err == "internal_error: Stealth initialization failed\n"
 
 
 def test_carnivore_module_exposes_a_consistent_browser_identity(fixture_server):

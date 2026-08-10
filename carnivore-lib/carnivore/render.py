@@ -234,6 +234,16 @@ async def _apply_stealth(context) -> None:
         raise FetchError(ERROR_INTERNAL, "Stealth initialization failed")
 
 
+async def _within_deadline(operation, deadline: float, timeout: float):
+    remaining = deadline - asyncio.get_running_loop().time()
+    if remaining <= 0:
+        raise FetchError(ERROR_TIMEOUT, f"Timed out after {timeout} seconds")
+    try:
+        return await asyncio.wait_for(operation(), timeout=remaining)
+    except (asyncio.TimeoutError, PlaywrightTimeoutError):
+        raise FetchError(ERROR_TIMEOUT, f"Timed out after {timeout} seconds")
+
+
 def _bind_rejections(context) -> None:
     async def reject_new_page(page):
         try:
@@ -265,48 +275,83 @@ async def render_browser(url: str, timeout: float) -> str:
         raise FetchError(ERROR_INVALID_INPUT, "URL must be an absolute HTTP(S) URL")
     allow_loopback = _host_is_loopback(parsed.hostname)
     policy = RenderPolicy(allow_loopback=allow_loopback)
+    deadline = asyncio.get_running_loop().time() + timeout
     profile_dir = tempfile.mkdtemp(prefix="carnivore-render-")
-    navigation_timeout_ms = int(max(0.2, timeout - 0.5) * 1000)
+    playwright_manager = None
+    playwright = None
+    context = None
+    playwright_entered = False
+
+    async def within_deadline(operation):
+        return await _within_deadline(operation, deadline, timeout)
+
+    async def cleanup_within_deadline(operation):
+        cleanup_task = asyncio.create_task(operation())
+        remaining = deadline - asyncio.get_running_loop().time()
+        if remaining <= 0:
+            return
+        try:
+            await asyncio.wait_for(asyncio.shield(cleanup_task), timeout=remaining)
+        except Exception:
+            pass
+
     try:
-        async with async_playwright() as playwright:
-            context = await playwright.chromium.launch_persistent_context(
+        playwright_manager = async_playwright()
+        playwright = await within_deadline(playwright_manager.__aenter__)
+        playwright_entered = True
+        context = await within_deadline(
+            lambda: playwright.chromium.launch_persistent_context(
                 profile_dir,
                 channel="chromium",
                 user_agent=USER_AGENT,
                 extra_http_headers=EXTRA_HTTP_HEADERS,
                 # Keep certificate validation strict for public and loopback HTTPS.
                 ignore_https_errors=False,
+            ),
+        )
+        try:
+            await within_deadline(lambda: _apply_stealth(context))
+            page = context.pages[0]
+            _bind_rejections(context)
+            await within_deadline(
+                lambda: page.route("**/*", _make_route_handler(page, policy)),
             )
             try:
-                await _apply_stealth(context)
-                page = context.pages[0]
-                _bind_rejections(context)
-                await page.route("**/*", _make_route_handler(page, policy))
-                try:
-                    await page.goto(
+                await within_deadline(
+                    lambda: page.goto(
                         url,
                         wait_until="domcontentloaded",
-                        timeout=navigation_timeout_ms,
-                    )
-                    await asyncio.sleep(SETTLE_WINDOW_SECONDS)
-                    rendered = await page.content()
-                except PlaywrightTimeoutError:
-                    raise FetchError(
-                        ERROR_TIMEOUT, f"Timed out after {timeout} seconds"
-                    )
-                except (asyncio.TimeoutError, asyncio.CancelledError):
-                    raise
-                except Exception:
-                    if policy.error is not None:
-                        raise policy.error
-                    raise FetchError(ERROR_NETWORK, "Navigation failed")
-            finally:
-                try:
-                    await asyncio.wait_for(context.close(), timeout=5)
-                except Exception:
-                    pass
+                        timeout=max(
+                            1,
+                            int((deadline - asyncio.get_running_loop().time()) * 1000),
+                        ),
+                    ),
+                )
+                await within_deadline(
+                    lambda: asyncio.sleep(SETTLE_WINDOW_SECONDS),
+                )
+                rendered = await within_deadline(page.content)
+            except asyncio.CancelledError:
+                raise
+            except FetchError:
+                raise
+            except Exception:
+                if policy.error is not None:
+                    raise policy.error
+                raise FetchError(ERROR_NETWORK, "Navigation failed")
+        finally:
+            try:
+                await within_deadline(context.close)
+            except Exception:
+                pass
     finally:
-        shutil.rmtree(profile_dir, ignore_errors=True)
+        if playwright_entered and playwright_manager is not None:
+            await cleanup_within_deadline(
+                lambda: playwright_manager.__aexit__(None, None, None)
+            )
+        await cleanup_within_deadline(
+            lambda: asyncio.to_thread(shutil.rmtree, profile_dir, ignore_errors=True)
+        )
     if policy.error is not None:
         raise policy.error
     policy.check_dom(rendered)
