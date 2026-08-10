@@ -46,10 +46,10 @@ SKIPPED_RESOURCE_TYPES = frozenset(("image", "media", "font"))
 
 USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
-    " (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    " (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
 )
 EXTRA_HTTP_HEADERS = {
-    "Sec-CH-UA": '"Chromium";v="131", "Not_A Brand";v="24"',
+    "Sec-CH-UA": '"Chromium";v="130", "Not_A Brand";v="24"',
     "Accept-Language": "en-US,en;q=0.9",
 }
 
@@ -226,7 +226,10 @@ async def _apply_stealth(context) -> None:
     try:
         if Stealth is None:
             raise RuntimeError("playwright-stealth is unavailable")
-        await Stealth().apply_stealth_async(context)
+        await Stealth(
+            navigator_platform_override="MacIntel",
+            navigator_user_agent_override=USER_AGENT,
+        ).apply_stealth_async(context)
     except Exception:
         raise FetchError(ERROR_INTERNAL, "Stealth initialization failed")
 
@@ -271,9 +274,8 @@ async def render_browser(url: str, timeout: float) -> str:
                 channel="chromium",
                 user_agent=USER_AGENT,
                 extra_http_headers=EXTRA_HTTP_HEADERS,
-                # Host-local services commonly use private certificates; public URLs
-                # keep Chromium's normal certificate validation.
-                ignore_https_errors=allow_loopback,
+                # Keep certificate validation strict for public and loopback HTTPS.
+                ignore_https_errors=False,
             )
             try:
                 await _apply_stealth(context)

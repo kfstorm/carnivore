@@ -48,6 +48,7 @@ class FakePlaywright:
         self.events = events
         self.context = context
         self.chromium = self
+        self.launch_kwargs = None
 
     async def __aenter__(self):
         return self
@@ -57,13 +58,15 @@ class FakePlaywright:
 
     async def launch_persistent_context(self, *_args, **_kwargs):
         self.events.append("launch")
+        self.launch_kwargs = _kwargs
         return self.context
 
 
 class FakeStealth:
-    def __init__(self, events, fail=False):
+    def __init__(self, events, fail=False, **kwargs):
         self.events = events
         self.fail = fail
+        self.kwargs = kwargs
         self.events.append("stealth_construct")
 
     async def apply_stealth_async(self, context):
@@ -76,23 +79,30 @@ class FakeStealth:
 def _patch_browser(monkeypatch, events, *, stealth_failure=False):
     context = FakeContext(events)
     playwright = FakePlaywright(events, context)
+    stealth_kwargs = {}
     monkeypatch.setattr(render, "async_playwright", lambda: playwright)
+
+    def make_stealth(**kwargs):
+        stealth_kwargs.update(kwargs)
+        return FakeStealth(events, fail=stealth_failure, **kwargs)
+
     monkeypatch.setattr(
         render,
         "Stealth",
-        lambda: FakeStealth(events, fail=stealth_failure),
+        make_stealth,
     )
 
     async def skip_settle(_seconds):
         return None
 
     monkeypatch.setattr(render.asyncio, "sleep", skip_settle)
+    return playwright, stealth_kwargs
 
 
 @pytest.mark.asyncio
 async def test_render_applies_stealth_before_route_and_first_navigation(monkeypatch):
     events = []
-    _patch_browser(monkeypatch, events)
+    playwright, _ = _patch_browser(monkeypatch, events)
 
     await render.render_browser("http://127.0.0.1:8080/article", timeout=5)
 
@@ -100,6 +110,25 @@ async def test_render_applies_stealth_before_route_and_first_navigation(monkeypa
     assert events.index("stealth_apply") < events.index("route")
     assert events.index("stealth_apply") < events.index("goto")
     assert events.count("goto") == 1
+
+
+@pytest.mark.asyncio
+async def test_render_uses_one_chrome_130_mac_identity_and_strict_tls(monkeypatch):
+    events = []
+    playwright, stealth_kwargs = _patch_browser(monkeypatch, events)
+
+    await render.render_browser("https://example.com/article", timeout=5)
+
+    assert playwright.launch_kwargs == {
+        "channel": "chromium",
+        "user_agent": render.USER_AGENT,
+        "extra_http_headers": render.EXTRA_HTTP_HEADERS,
+        "ignore_https_errors": False,
+    }
+    assert stealth_kwargs == {
+        "navigator_platform_override": "MacIntel",
+        "navigator_user_agent_override": render.USER_AGENT,
+    }
 
 
 @pytest.mark.asyncio

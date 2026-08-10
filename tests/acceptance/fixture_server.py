@@ -1,5 +1,6 @@
 import argparse
 import base64
+import json
 import socket
 import ssl
 import time
@@ -173,6 +174,22 @@ setTimeout(() => {
                 "to identify it as the primary content. It is served without "
                 "external dependencies so the acceptance suite can exercise the "
                 "existing fetch command through a real browser.",
+            )
+        elif path == "/identity":
+            request_sec_ch_ua = json.dumps(self.headers.get("Sec-CH-UA", ""))
+            content = article(
+                "Browser identity fixture",
+                "This fixture reports the browser identity through the public fetch command.",
+                f"""<pre id="identity"></pre>
+<script>
+const identity = {{
+  userAgent: navigator.userAgent,
+  platform: navigator.platform,
+  webdriver: navigator.webdriver,
+  secChUa: {request_sec_ch_ua}
+}};
+document.querySelector("#identity").textContent = JSON.stringify(identity);
+</script>""",
             )
         else:
             self.send_error(404)

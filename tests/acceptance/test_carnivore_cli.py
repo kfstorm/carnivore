@@ -1,5 +1,7 @@
 import json
+import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -94,3 +96,26 @@ def test_carnivore_module_reports_raw_errors_on_stderr(static_article_url):
     assert result.stdout == ""
     assert result.stderr == "invalid_input: Unsupported resource mode\n"
     assert static_article_url not in result.stderr
+
+
+def test_carnivore_module_exposes_a_consistent_browser_identity(fixture_server):
+    result = run_carnivore(f"{fixture_server}/identity", "--format", "html")
+
+    assert result.returncode == 0
+    assert result.stderr == ""
+    identity_match = re.search(r'<pre id="identity">(\{.*\})</pre>', result.stdout)
+    assert identity_match is not None
+    identity = json.loads(identity_match.group(1))
+
+    assert {key: identity[key] for key in ("userAgent", "platform", "webdriver")} == {
+        "userAgent": (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 "
+            "Safari/537.36"
+        ),
+        "platform": "MacIntel",
+        "webdriver": False,
+    }
+    assert "HeadlessChrome" not in identity["userAgent"]
+    assert '"Chromium";v="130"' in identity["secChUa"]
+    assert '"Chromium";v="131"' not in identity["secChUa"]
