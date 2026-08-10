@@ -24,6 +24,11 @@ RUN set -eux; \
     declared_base="${BASE_IMAGE_REF}"; \
     . /opt/carnivore/core.lock; \
     test "${declared_base}" = "${BASE_IMAGE_REF}"; \
+    test "${PLAYWRIGHT_STEALTH_VERSION}" = "2.0.3"; \
+    test -n "${PLAYWRIGHT_STEALTH_SOURCE_COMMIT}"; \
+    grep -Fqx -- \
+        "playwright-stealth==${PLAYWRIGHT_STEALTH_VERSION} --hash=sha256:${PLAYWRIGHT_STEALTH_WHEEL_SHA256}" \
+        /opt/carnivore/requirements-core.txt; \
     case "${TARGETARCH}" in \
         amd64) \
             node_arch=x64; \
