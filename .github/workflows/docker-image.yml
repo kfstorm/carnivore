@@ -19,6 +19,7 @@ jobs:
     outputs:
       image: ${{ steps.meta.outputs.image }}
       digest: ${{ steps.build.outputs.digest }}
+      platform_digests: ${{ steps.manifest.outputs.platform_digests }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -70,11 +71,21 @@ jobs:
           cache-to: type=gha,mode=max,scope=core-image
 
       - name: Record manifest and component evidence
+        id: manifest
         run: |
           set -euo pipefail
           image="${{ steps.meta.outputs.image }}"
           manifest="$(docker buildx imagetools inspect "${image}" --raw)"
           printf '%s\n' "${manifest}" > /tmp/core-manifest.json
+          platform_digests="$(jq -c '
+            [.manifests[]
+             | select(.platform.os == "linux")
+             | select((.annotations["vnd.docker.reference.type"] // "") != "attestation-manifest")
+             | {key: ("linux/" + .platform.architecture), value: .digest}]
+            | from_entries
+          ' /tmp/core-manifest.json)"
+          [[ "$(jq 'keys | sort' <<< "${platform_digests}")" == '["linux/amd64","linux/arm64"]' ]]
+          echo "platform_digests=${platform_digests}" >> "${GITHUB_OUTPUT}"
           {
             echo "# Core image baseline"
             echo
@@ -133,9 +144,15 @@ jobs:
 
       - name: Pull candidate by manifest digest
         run: |
+          set -euo pipefail
           image="${{ needs.build.outputs.image }}@${{ needs.build.outputs.digest }}"
           docker pull --platform "${{ matrix.platform }}" "${image}"
           echo "image=${image}" >> "${GITHUB_ENV}"
+          platform_digest="$(docker buildx imagetools inspect "${image}" --raw | jq -r \
+            --arg platform "${{ matrix.platform }}" \
+            '.manifests[] | select((.platform.os + "/" + .platform.architecture) == $platform) | .digest')"
+          [[ "${platform_digest}" == sha256:* ]]
+          echo "platform_digest=${platform_digest}" >> "${GITHUB_ENV}"
 
       - name: Run local fixture contract
         run: |
@@ -230,6 +247,28 @@ jobs:
             *) echo "IPv6 loopback fetch did not return the fixture article" >&2; exit 1 ;;
           esac
 
+          identity_html="$(fetch_wrapper \
+            http://127.0.0.1:18080/identity --format full_html --resource-mode link)"
+          identity_evidence="$(printf '%s' "${identity_html}" | \
+            python3 scripts/verify_stealth_evidence.py identity)"
+          source docker/core.lock
+          runtime_metadata="$(docker run --rm --platform "${{ matrix.platform }}" \
+            --entrypoint python "${image}" -c \
+            'from pathlib import Path; import importlib.metadata as m, json; lock=dict(line.split("=", 1) for line in Path("/opt/carnivore/core.lock").read_text().splitlines() if "=" in line); requirement=next(line for line in Path("/opt/carnivore/requirements-core.txt").read_text().splitlines() if line.startswith("playwright-stealth==")); d=m.distribution("playwright-stealth"); print(json.dumps({"version": d.version, "license": d.metadata.get("License", ""), "wheel_sha256": lock["PLAYWRIGHT_STEALTH_WHEEL_SHA256"], "source_commit": lock["PLAYWRIGHT_STEALTH_SOURCE_COMMIT"], "requirement": requirement}))')"
+          runtime_evidence="$(printf '%s' "${runtime_metadata}" | \
+            python3 scripts/verify_stealth_evidence.py runtime \
+              --version "${PLAYWRIGHT_STEALTH_VERSION}" \
+              --wheel-sha256 "${PLAYWRIGHT_STEALTH_WHEEL_SHA256}" \
+              --source-commit "${PLAYWRIGHT_STEALTH_SOURCE_COMMIT}" \
+              --license "${PLAYWRIGHT_STEALTH_LICENSE}")"
+          jq -n \
+            --arg platform "${{ matrix.platform }}" \
+            --arg digest "${platform_digest}" \
+            --argjson identity "${identity_evidence}" \
+            --argjson runtime "${runtime_evidence}" \
+            '{platform: $platform, digest: $digest, identity: $identity.status, runtime: $runtime.status, runtime_version: $runtime.version, runtime_wheel_sha256: $runtime.wheel_sha256, runtime_source_commit: $runtime.source_commit, runtime_license: $runtime.license, runtime_requirement: $runtime.requirement}' \
+            > "/tmp/core-stealth-${{ matrix.key }}.json"
+
           uncompressed="$(docker image inspect "${image}" --format '{{.Size}}')"
           {
             echo "# Native ${{ matrix.platform }} smoke evidence"
@@ -237,30 +276,20 @@ jobs:
             echo "- Image: \`${image}\`"
             echo "- Uncompressed image bytes: ${uncompressed}"
             echo
-            echo "## markdown + omit"
-            echo
-            echo '```markdown'
-            printf '%s\n' "${markdown}"
-            echo '```'
-            echo
-            echo "## html + link"
-            echo
-            echo '```html'
-            printf '%s\n' "${html}"
-            echo '```'
-            echo
-            echo "## full_html + embed"
-            echo
-            echo '```html'
-            printf '%s\n' "${full_html}"
-            echo '```'
+            echo "- markdown + omit: passed"
+            echo "- html + link: passed"
+            echo "- full_html + embed: passed"
+            echo "- browser identity: passed"
+            echo "- Stealth runtime metadata: passed"
           } | tee "/tmp/core-smoke-${{ matrix.key }}.md" >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Upload native smoke evidence
         uses: actions/upload-artifact@v4
         with:
           name: core-smoke-${{ matrix.key }}
-          path: /tmp/core-smoke-${{ matrix.key }}.md
+          path: |
+            /tmp/core-smoke-${{ matrix.key }}.md
+            /tmp/core-stealth-${{ matrix.key }}.json
 
   build-baseline:
     needs: build

@@ -265,4 +265,5 @@ def test_core_stealth_dependency_is_stable_and_auditable():
     assert f"PLAYWRIGHT_STEALTH_VERSION={STEALTH_VERSION}" in lock
     assert f"PLAYWRIGHT_STEALTH_WHEEL_SHA256={STEALTH_WHEEL_SHA256}" in lock
     assert f"PLAYWRIGHT_STEALTH_SOURCE_COMMIT={STEALTH_SOURCE_COMMIT}" in lock
+    assert "PLAYWRIGHT_STEALTH_LICENSE=MIT" in lock
     assert "playwright_stealth@rc4" not in requirements

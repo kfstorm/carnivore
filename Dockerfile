@@ -26,6 +26,7 @@ RUN set -eux; \
     test "${declared_base}" = "${BASE_IMAGE_REF}"; \
     test "${PLAYWRIGHT_STEALTH_VERSION}" = "2.0.3"; \
     test -n "${PLAYWRIGHT_STEALTH_SOURCE_COMMIT}"; \
+    test "${PLAYWRIGHT_STEALTH_LICENSE}" = "MIT"; \
     grep -Fqx -- \
         "playwright-stealth==${PLAYWRIGHT_STEALTH_VERSION} --hash=sha256:${PLAYWRIGHT_STEALTH_WHEEL_SHA256}" \
         /opt/carnivore/requirements-core.txt; \

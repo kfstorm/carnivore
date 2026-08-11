@@ -204,18 +204,17 @@ jobs:
           ' <<< "${manifest}")"
           printf 'platform_digests=%s\n' "${platform_digests}" >> "${GITHUB_OUTPUT}"
           printf 'image=%s\n' "${stable_image}" >> "${GITHUB_OUTPUT}"
-          {
-            echo "{"
-            echo '  "release_gate": "passed",'
-            echo '  "offline_native": "passed",'
-            echo '  "live_smoke": "passed",'
-            echo '  "benchmark": "passed",'
-            echo '  "cache": "verified",'
-            printf '  "promoted_from": "%s",\n' "${RC_TAG}"
-            printf '  "promoted_digest": "%s",\n' "${RC_DIGEST}"
-            printf '  "workflow_run": "%s"\n' "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-            echo "}"
-          } > "${RUNNER_TEMP}/validation.json"
+          rc_platform_digests="$(jq -c '
+            [.image.platforms[] | {key: .platform, value: .digest}] | from_entries
+          ' "${RUNNER_TEMP}/rc/release-manifest.json")"
+          jq -e --argjson expected "${rc_platform_digests}" '. == $expected' <<< "${platform_digests}" >/dev/null
+          jq \
+            --arg promoted_from "${RC_TAG}" \
+            --arg promoted_digest "${RC_DIGEST}" \
+            --arg workflow_run "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            '.validation + {promoted_from: $promoted_from, promoted_digest: $promoted_digest, workflow_run: $workflow_run}' \
+            "${RUNNER_TEMP}/rc/release-manifest.json" \
+            > "${RUNNER_TEMP}/validation.json"
 
       - name: Build stable release assets without rebuilding the image
         env:

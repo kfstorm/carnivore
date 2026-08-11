@@ -198,6 +198,7 @@ def _component_facts(platforms: list[dict[str, str]]) -> list[dict[str, Any]]:
         ("base-image", lock.get("BASE_IMAGE_REF", "")),
         ("node", lock.get("NODE_VERSION", "")),
         ("playwright", lock.get("PLAYWRIGHT_VERSION", "")),
+        ("playwright-stealth", lock.get("PLAYWRIGHT_STEALTH_VERSION", "")),
         ("chromium", lock.get("CHROMIUM_REVISION", "")),
         ("pandoc", lock.get("PANDOC_VERSION", "")),
         ("monolith", lock.get("MONOLITH_VERSION", "")),
@@ -231,8 +232,44 @@ def _component_facts(platforms: list[dict[str, str]]) -> list[dict[str, Any]]:
                 "linux/amd64": lock.get("MONOLITH_SHA256_AMD64", ""),
                 "linux/arm64": lock.get("MONOLITH_SHA256_ARM64", ""),
             }
+        elif name == "playwright-stealth":
+            fact["wheel_sha256"] = lock.get("PLAYWRIGHT_STEALTH_WHEEL_SHA256", "")
+            fact["source_commit"] = lock.get("PLAYWRIGHT_STEALTH_SOURCE_COMMIT", "")
+            fact["license"] = lock.get("PLAYWRIGHT_STEALTH_LICENSE", "")
         facts.append(fact)
     return facts
+
+
+def _validate_stealth_validation(
+    validation: dict[str, Any], platforms: list[dict[str, str]]
+) -> None:
+    lock = _parse_lock()
+    expected = {
+        "version": lock.get("PLAYWRIGHT_STEALTH_VERSION"),
+        "wheel_sha256": lock.get("PLAYWRIGHT_STEALTH_WHEEL_SHA256"),
+        "source_commit": lock.get("PLAYWRIGHT_STEALTH_SOURCE_COMMIT"),
+        "license": lock.get("PLAYWRIGHT_STEALTH_LICENSE"),
+    }
+    stealth = validation.get("stealth")
+    if not isinstance(stealth, dict):
+        raise ValueError("release validation does not contain Stealth evidence")
+    if any(stealth.get(key) != value for key, value in expected.items()):
+        raise ValueError("Stealth evidence does not match the dependency lock")
+
+    platform_evidence = stealth.get("platforms")
+    if not isinstance(platform_evidence, dict):
+        raise ValueError("Stealth evidence does not contain platform results")
+    expected_platforms = {item["platform"]: item["digest"] for item in platforms}
+    if set(platform_evidence) != set(expected_platforms):
+        raise ValueError("Stealth evidence is incomplete across architectures")
+    for platform, digest in expected_platforms.items():
+        result = platform_evidence[platform]
+        if not isinstance(result, dict):
+            raise ValueError(f"Stealth evidence for {platform} is invalid")
+        if result.get("digest") != digest:
+            raise ValueError(f"Stealth evidence digest mismatch for {platform}")
+        if result.get("identity") != "passed" or result.get("runtime") != "passed":
+            raise ValueError(f"Stealth evidence did not pass for {platform}")
 
 
 def _spdx_document(
@@ -267,7 +304,7 @@ def _spdx_document(
                 "versionInfo": fact["version"],
                 "downloadLocation": "NOASSERTION",
                 "licenseConcluded": "NOASSERTION",
-                "licenseDeclared": "NOASSERTION",
+                "licenseDeclared": fact.get("license", "NOASSERTION"),
                 "filesAnalyzed": False,
                 "annotations": [
                     {
@@ -401,6 +438,7 @@ def package_release(
         raise ValueError("linux/amd64 and linux/arm64 platform digests are required")
     if not isinstance(validation, dict):
         raise ValueError("validation facts must be a JSON object")
+    _validate_stealth_validation(validation, platforms)
     if output.exists() and any(output.iterdir()):
         raise ValueError(f"release output directory is not empty: {output}")
     output.mkdir(parents=True, exist_ok=True)
@@ -522,11 +560,55 @@ def verify_manifest(
         raise ValueError("manifest image does not use the release tag")
     if image.get("reference") != f"{REPOSITORY}:{tag}":
         raise ValueError("manifest image does not use the release tag")
+    manifest_platforms = image.get("platforms")
+    if not isinstance(manifest_platforms, list):
+        raise ValueError("manifest does not contain platform digests")
+    platforms = []
+    for item in manifest_platforms:
+        if not isinstance(item, dict):
+            raise ValueError("manifest platform digest is invalid")
+        platform = item.get("platform")
+        platform_digest = item.get("digest")
+        if not isinstance(platform, str) or not isinstance(platform_digest, str):
+            raise ValueError("manifest platform digest is invalid")
+        platforms.append(
+            {"platform": platform, "digest": _require_digest(platform_digest, platform)}
+        )
+    if len(platforms) != 2 or {item["platform"] for item in platforms} != {
+        "linux/amd64",
+        "linux/arm64",
+    }:
+        raise ValueError("manifest must contain both native platform digests")
     validation = manifest.get("validation")
     if not isinstance(validation, dict):
         raise ValueError("manifest does not contain validation facts")
     if validation.get("release_gate") not in ("passed", True):
         raise ValueError("release validation did not pass")
+    _validate_stealth_validation(validation, platforms)
+    components = manifest.get("components")
+    if not isinstance(components, list):
+        raise ValueError("manifest does not contain components")
+    stealth_component = next(
+        (
+            item
+            for item in components
+            if isinstance(item, dict) and item.get("component") == "playwright-stealth"
+        ),
+        None,
+    )
+    lock = _parse_lock()
+    expected_component = {
+        "version": lock.get("PLAYWRIGHT_STEALTH_VERSION"),
+        "wheel_sha256": lock.get("PLAYWRIGHT_STEALTH_WHEEL_SHA256"),
+        "source_commit": lock.get("PLAYWRIGHT_STEALTH_SOURCE_COMMIT"),
+        "license": lock.get("PLAYWRIGHT_STEALTH_LICENSE"),
+    }
+    if not isinstance(stealth_component, dict) or any(
+        stealth_component.get(key) != value for key, value in expected_component.items()
+    ):
+        raise ValueError(
+            "manifest Stealth component does not match the dependency lock"
+        )
     return manifest
 
 

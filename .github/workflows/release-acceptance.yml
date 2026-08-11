@@ -37,6 +37,7 @@ jobs:
     outputs:
       image: ${{ steps.meta.outputs.image }}
       digest: ${{ steps.build.outputs.digest }}
+      platform_digests: ${{ steps.manifest.outputs.platform_digests }}
       commit: ${{ steps.source.outputs.commit }}
       release_tag: ${{ steps.release.outputs.tag }}
     steps:
@@ -140,9 +141,23 @@ jobs:
           cache-to: type=gha,mode=max,scope=release-candidate
 
       - name: Record candidate evidence
+        id: manifest
         env:
           PUBLISH_RC: ${{ github.event_name == 'push' || inputs.publish_rc }}
         run: |
+          set -euo pipefail
+          image="${{ steps.meta.outputs.image }}"
+          manifest="$(docker buildx imagetools inspect "${image}" --raw)"
+          printf '%s\n' "${manifest}" > "${RUNNER_TEMP}/candidate-manifest.json"
+          platform_digests="$(jq -c '
+            [.manifests[]
+             | select(.platform.os == "linux")
+             | select((.annotations["vnd.docker.reference.type"] // "") != "attestation-manifest")
+             | {key: ("linux/" + .platform.architecture), value: .digest}]
+            | from_entries
+          ' "${RUNNER_TEMP}/candidate-manifest.json")"
+          [[ "$(jq 'keys | sort' <<< "${platform_digests}")" == '["linux/amd64","linux/arm64"]' ]]
+          echo "platform_digests=${platform_digests}" >> "${GITHUB_OUTPUT}"
           {
             if [[ "${PUBLISH_RC}" == "true" ]]; then
               echo "# Release candidate image"
@@ -153,6 +168,7 @@ jobs:
             echo "- Commit: \`${{ steps.source.outputs.commit }}\`"
             echo "- Image: \`${{ steps.meta.outputs.image }}\`"
             echo "- Manifest digest: \`${{ steps.build.outputs.digest }}\`"
+            echo "- Native platform digests: \`${platform_digests}\`"
             echo "- Native validation: linux/amd64 and linux/arm64"
             echo "- Offline contract: full deterministic suite"
             echo "- Cache validation: explicit cache-hit trace"
@@ -162,7 +178,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: release-candidate-${{ github.run_id }}
-          path: /tmp/release-candidate-evidence.md
+          path: |
+            /tmp/release-candidate-evidence.md
+            ${{ runner.temp }}/candidate-manifest.json
           retention-days: 90
 
   offline-native:
@@ -188,12 +206,21 @@ jobs:
         with:
           ref: ${{ needs.build-candidate.outputs.commit }}
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Pull candidate by manifest digest
         env:
           IMAGE: ${{ needs.build-candidate.outputs.image }}@${{ needs.build-candidate.outputs.digest }}
         run: |
+          set -euo pipefail
           docker pull --platform "${{ matrix.platform }}" "${IMAGE}"
           echo "CANDIDATE_IMAGE=${IMAGE}" >> "${GITHUB_ENV}"
+          platform_digest="$(docker buildx imagetools inspect "${IMAGE}" --raw | jq -r \
+            --arg platform "${{ matrix.platform }}" \
+            '.manifests[] | select((.platform.os + "/" + .platform.architecture) == $platform) | .digest')"
+          [[ "${platform_digest}" == sha256:* ]]
+          echo "PLATFORM_DIGEST=${platform_digest}" >> "${GITHUB_ENV}"
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -324,6 +351,29 @@ jobs:
           cmp "${RUNNER_TEMP}/cache-first.json" "${RUNNER_TEMP}/cache-second.json"
           grep -Fxq cache_hit "${RUNNER_TEMP}/cache-trace.log"
 
+          identity_html="$(docker run --rm --platform "${{ matrix.platform }}" \
+            --network host "${CANDIDATE_IMAGE}" \
+            http://127.0.0.1:18080/identity --format full_html --resource-mode link)"
+          identity_evidence="$(printf '%s' "${identity_html}" | \
+            python3 scripts/verify_stealth_evidence.py identity)"
+          source docker/core.lock
+          runtime_metadata="$(docker run --rm --platform "${{ matrix.platform }}" \
+            --entrypoint python "${CANDIDATE_IMAGE}" -c \
+            'from pathlib import Path; import importlib.metadata as m, json; lock=dict(line.split("=", 1) for line in Path("/opt/carnivore/core.lock").read_text().splitlines() if "=" in line); requirement=next(line for line in Path("/opt/carnivore/requirements-core.txt").read_text().splitlines() if line.startswith("playwright-stealth==")); d=m.distribution("playwright-stealth"); print(json.dumps({"version": d.version, "license": d.metadata.get("License", ""), "wheel_sha256": lock["PLAYWRIGHT_STEALTH_WHEEL_SHA256"], "source_commit": lock["PLAYWRIGHT_STEALTH_SOURCE_COMMIT"], "requirement": requirement}))')"
+          runtime_evidence="$(printf '%s' "${runtime_metadata}" | \
+            python3 scripts/verify_stealth_evidence.py runtime \
+              --version "${PLAYWRIGHT_STEALTH_VERSION}" \
+              --wheel-sha256 "${PLAYWRIGHT_STEALTH_WHEEL_SHA256}" \
+              --source-commit "${PLAYWRIGHT_STEALTH_SOURCE_COMMIT}" \
+              --license "${PLAYWRIGHT_STEALTH_LICENSE}")"
+          jq -n \
+            --arg platform "${{ matrix.platform }}" \
+            --arg digest "${PLATFORM_DIGEST}" \
+            --argjson identity "${identity_evidence}" \
+            --argjson runtime "${runtime_evidence}" \
+            '{platform: $platform, digest: $digest, identity: $identity.status, runtime: $runtime.status, runtime_version: $runtime.version, runtime_wheel_sha256: $runtime.wheel_sha256, runtime_source_commit: $runtime.source_commit, runtime_license: $runtime.license, runtime_requirement: $runtime.requirement}' \
+            > "${RUNNER_TEMP}/stealth-${{ matrix.key }}.json"
+
           {
             echo "# Native offline evidence (${{ matrix.platform }})"
             echo
@@ -333,15 +383,18 @@ jobs:
             echo "- html + link: passed"
             echo "- full_html + embed: passed"
             echo "- cache hit: explicit cache_hit trace and byte-identical JSON"
+            echo "- browser identity: passed"
+            echo "- Stealth runtime metadata: passed"
           } | tee "${evidence}" >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Upload native offline evidence
-        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: release-offline-${{ matrix.key }}-${{ github.run_id }}
-          path: ${{ runner.temp }}/offline-${{ matrix.key }}.md
-          if-no-files-found: warn
+          path: |
+            ${{ runner.temp }}/offline-${{ matrix.key }}.md
+            ${{ runner.temp }}/stealth-${{ matrix.key }}.json
+          if-no-files-found: error
           retention-days: 90
 
   live-smoke:
@@ -471,6 +524,35 @@ jobs:
             exit 1
           fi
 
+      - name: Download native Stealth evidence
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-offline-*-${{ github.run_id }}
+          path: ${{ runner.temp }}/native-evidence
+          merge-multiple: true
+
+      - name: Require complete native Stealth evidence
+        env:
+          PLATFORM_DIGESTS: ${{ needs.build-candidate.outputs.platform_digests }}
+        run: |
+          set -euo pipefail
+          source docker/core.lock
+          for platform in linux/amd64 linux/arm64; do
+            key="${platform##*/}"
+            evidence="${RUNNER_TEMP}/native-evidence/stealth-${key}.json"
+            test -s "${evidence}"
+            jq -e \
+              --arg platform "${platform}" \
+              --arg digest "${PLATFORM_DIGESTS}" \
+              --arg version "${PLAYWRIGHT_STEALTH_VERSION}" \
+              --arg wheel_sha256 "${PLAYWRIGHT_STEALTH_WHEEL_SHA256}" \
+              --arg source_commit "${PLAYWRIGHT_STEALTH_SOURCE_COMMIT}" \
+              --arg license "${PLAYWRIGHT_STEALTH_LICENSE}" \
+              --arg requirement "playwright-stealth==${PLAYWRIGHT_STEALTH_VERSION} --hash=sha256:${PLAYWRIGHT_STEALTH_WHEEL_SHA256}" \
+              '(.platform == $platform) and (.digest == ($digest | fromjson)[$platform]) and (.identity == "passed") and (.runtime == "passed") and (.runtime_version == $version) and (.runtime_wheel_sha256 == $wheel_sha256) and (.runtime_source_commit == $source_commit) and (.runtime_license == $license) and (.runtime_requirement == $requirement)' \
+              "${evidence}" >/dev/null
+          done
+
       - name: Promote validated digest to exact RC tag
         env:
           RELEASE_TAG: ${{ needs.build-candidate.outputs.release_tag }}
@@ -523,16 +605,22 @@ jobs:
           ' <<< "${manifest}")"
           printf 'platform_digests=%s\n' "${platform_digests}" >> "${GITHUB_OUTPUT}"
           printf 'image=%s\n' "${release_image}" >> "${GITHUB_OUTPUT}"
+          source docker/core.lock
+          stealth_platforms="$(jq -s 'map({key: .platform, value: {digest: .digest, identity: .identity, runtime: .runtime}}) | from_entries' \
+            "${RUNNER_TEMP}"/native-evidence/stealth-*.json)"
+          jq -e --argjson expected "${platform_digests}" \
+            'with_entries(.value = .value.digest) == $expected' \
+            <<< "${stealth_platforms}" >/dev/null
           {
-            echo "{"
-            echo '  "release_gate": "passed",'
-            echo '  "offline_native": "passed",'
-            echo '  "live_smoke": "passed",'
-            echo '  "benchmark": "passed",'
-            echo '  "cache": "verified",'
-            printf '  "workflow_run": "%s",\n' "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-            printf '  "candidate_digest": "%s"\n' "${RELEASE_DIGEST}"
-            echo "}"
+            jq -n \
+              --arg workflow_run "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+              --arg candidate_digest "${RELEASE_DIGEST}" \
+              --arg version "${PLAYWRIGHT_STEALTH_VERSION}" \
+              --arg wheel_sha256 "${PLAYWRIGHT_STEALTH_WHEEL_SHA256}" \
+              --arg source_commit "${PLAYWRIGHT_STEALTH_SOURCE_COMMIT}" \
+              --arg license "${PLAYWRIGHT_STEALTH_LICENSE}" \
+              --argjson platforms "${stealth_platforms}" \
+              '{release_gate: "passed", offline_native: "passed", live_smoke: "passed", benchmark: "passed", cache: "verified", workflow_run: $workflow_run, candidate_digest: $candidate_digest, stealth: {version: $version, wheel_sha256: $wheel_sha256, source_commit: $source_commit, license: $license, platforms: $platforms}}'
           } > "${RUNNER_TEMP}/validation.json"
 
       - name: Build release assets
